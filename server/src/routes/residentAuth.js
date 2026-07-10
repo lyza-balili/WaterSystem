@@ -29,15 +29,15 @@ function hashResetCode(code) {
 // First login for a household (no password_hash set yet) creates the
 // password; returning residents authenticate against the stored hash.
 router.post("/login", (req, res) => {
-  const { householdId, password, confirmPassword } = req.body || {};
+  const { householdId, password, confirmPassword, email, username } = req.body || {};
 
   if (!householdId || !password) {
-    return res.json({ success: false, message: "Household and password are required." });
+    return res.json({ success: false, message: "Control number and password are required." });
   }
 
   const household = db.prepare("SELECT id FROM households WHERE id = ?").get(householdId);
   if (!household) {
-    return res.json({ success: false, message: "Unknown household / standpost." });
+    return res.json({ success: false, message: "We couldn't find an account with that control number." });
   }
 
   const account = db
@@ -57,15 +57,33 @@ router.post("/login", (req, res) => {
       return res.json({ success: false, message: "Passwords do not match." });
     }
 
+    // Optional email / preferred username captured at sign-up.
+    const cleanEmail = typeof email === "string" ? email.trim() : "";
+    const cleanUsername = typeof username === "string" ? username.trim() : "";
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.json({ success: false, message: "Please enter a valid email address." });
+    }
+    if (cleanUsername) {
+      const taken = db
+        .prepare("SELECT household_id FROM resident_accounts WHERE username = ? AND household_id != ?")
+        .get(cleanUsername, householdId);
+      if (taken) {
+        return res.json({ success: false, message: "That username is already taken. Please choose another." });
+      }
+    }
+
     const hash = bcrypt.hashSync(password, 10);
     if (account) {
       db.prepare(
-        "UPDATE resident_accounts SET password_hash = ?, updated_at = datetime('now') WHERE household_id = ?"
-      ).run(hash, householdId);
+        "UPDATE resident_accounts SET password_hash = ?, username = COALESCE(NULLIF(?, ''), username), updated_at = datetime('now') WHERE household_id = ?"
+      ).run(hash, cleanUsername, householdId);
     } else {
       db.prepare(
-        "INSERT INTO resident_accounts (household_id, password_hash) VALUES (?, ?)"
-      ).run(householdId, hash);
+        "INSERT INTO resident_accounts (household_id, password_hash, username) VALUES (?, ?, NULLIF(?, ''))"
+      ).run(householdId, hash, cleanUsername);
+    }
+    if (cleanEmail) {
+      db.prepare("UPDATE households SET email = ? WHERE id = ?").run(cleanEmail, householdId);
     }
   } else {
     const matches = bcrypt.compareSync(password, account.password_hash);

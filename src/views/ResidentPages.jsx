@@ -36,9 +36,11 @@ export function LoginScreen({
   useApi,
 }) {
   const [mode, setMode] = useState("login"); // 'login' | 'forgot'
-  const [householdId, setHouseholdId] = useState(
-    residentLoginHouseholdId || (households[0] && households[0].id) || ""
-  );
+  // Residents now type their control number (household ID off the bill) instead
+  // of picking their name from a list — better privacy, matches the printed bill.
+  const [controlNumber, setControlNumber] = useState(residentLoginHouseholdId || "");
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -52,8 +54,14 @@ export function LoginScreen({
   // the resident has manually switched forms via the toggle link below.
   const [modeOverride, setModeOverride] = useState(null); // null | 'login' | 'create'
 
-  const selected = households.find((h) => h.id === householdId) || households[0];
-  const autoIsNewPassword = selected ? !selected.password : false;
+  // Resolve the typed control number to a household (case-insensitive).
+  const normalizedControl = controlNumber.trim().toLowerCase();
+  const selected = normalizedControl
+    ? households.find((h) => h.id.toLowerCase() === normalizedControl) || null
+    : null;
+  const resolvedHouseholdId = selected ? selected.id : "";
+  // Default to "sign up" when nothing's matched yet (mirrors the reference).
+  const autoIsNewPassword = selected ? !selected.password : true;
   const isNewPassword = modeOverride ? modeOverride === "create" : autoIsNewPassword;
   const googleLinked = selected ? Boolean(selected.googleLinked) : false;
 
@@ -65,15 +73,14 @@ export function LoginScreen({
     { label: "A symbol", met: /[^A-Za-z0-9]/.test(password) },
   ];
 
-  function selectHousehold(id) {
-    setHouseholdId(id);
-    setPassword("");
-    setConfirmPassword("");
+  function handleControlChange(value) {
+    setControlNumber(value);
     setError("");
     setInfo("");
     setModeOverride(null);
-    if (typeof onResidentLoginHouseholdSelect === "function") {
-      onResidentLoginHouseholdSelect(id);
+    const match = households.find((h) => h.id.toLowerCase() === value.trim().toLowerCase());
+    if (match && typeof onResidentLoginHouseholdSelect === "function") {
+      onResidentLoginHouseholdSelect(match.id);
     }
   }
 
@@ -88,8 +95,12 @@ export function LoginScreen({
   async function handleLogin() {
     setError("");
 
-    if (!householdId) {
-      setError("Please select your household / standpost.");
+    if (!controlNumber.trim()) {
+      setError("Please enter your control number (found on your water bill).");
+      return;
+    }
+    if (!selected) {
+      setError("We couldn't find an account with that control number. Check your bill and try again.");
       return;
     }
     if (!password) {
@@ -112,9 +123,11 @@ export function LoginScreen({
     setSubmitting(true);
     try {
       const result = await onResidentLogin({
-        householdId,
+        householdId: resolvedHouseholdId,
         password,
         confirmPassword,
+        email: isNewPassword ? email : undefined,
+        username: isNewPassword ? username : undefined,
       });
       if (!result || !result.success) {
         // The backend always checks the real account state, regardless of
@@ -139,14 +152,14 @@ export function LoginScreen({
   }
 
   async function handleGoogleCredential(credential) {
-    if (!householdId) {
-      setError("Please select your household / standpost first, then sign in with Google.");
+    if (!selected) {
+      setError("Please enter your control number first, then sign in with Google.");
       return;
     }
     setError("");
     setGoogleSubmitting(true);
     try {
-      const result = await onResidentGoogleLogin({ householdId, credential });
+      const result = await onResidentGoogleLogin({ householdId: resolvedHouseholdId, credential });
       if (!result || !result.success) {
         setError((result && result.message) || "Google sign-in failed. Please try again.");
       }
@@ -165,9 +178,9 @@ export function LoginScreen({
     return (
       <ResidentForgotPasswordScreen
         households={households}
-        initialHouseholdId={householdId}
+        initialHouseholdId={resolvedHouseholdId}
         onDone={(resetHouseholdId, message) => {
-          setHouseholdId(resetHouseholdId);
+          setControlNumber(resetHouseholdId);
           setPassword("");
           setConfirmPassword("");
           setInfo(message);
@@ -201,12 +214,12 @@ export function LoginScreen({
           {/* Form */}
           <div className="px-8 py-6">
             <div className="text-[13px] font-semibold text-slate-700 mb-1 text-center">
-              Resident Sign In
+              {isNewPassword ? "Resident Sign Up" : "Resident Sign In"}
             </div>
             <div className="text-[11px] text-slate-400 mb-5 text-center">
               {isNewPassword
-                ? "First time here? Create a password for your household."
-                : "Enter your password to continue."}
+                ? "Register your household using the control number on your water bill."
+                : "Enter your control number and password to continue."}
             </div>
 
             {info && (
@@ -235,44 +248,79 @@ export function LoginScreen({
               </div>
             )}
 
-            {/* Household / standpost select */}
+            {/* Email + Preferred Username — sign-up only */}
+            {isNewPassword && (
+              <>
+                <div className="mb-3">
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <input
+                      type="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => { setEmail(e.target.value); setError(""); }}
+                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                    Preferred Username
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Choose a username"
+                      value={username}
+                      onChange={(e) => { setUsername(e.target.value); setError(""); }}
+                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Control Number (household ID from the bill) */}
             <div className="mb-3">
               <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                Household / Standpost
+                Control Number
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg
-                    className="w-4 h-4 text-slate-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-                    />
-                  </svg>
-                </div>
-                <select
-                  value={householdId}
-                  onChange={(e) => selectHousehold(e.target.value)}
-                  className="w-full appearance-none border border-slate-300 rounded-lg pl-9 pr-8 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition bg-white"
-                >
-                  {households.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.id} · {h.name} (Standpost #{h.standpost})
-                    </option>
-                  ))}
-                </select>
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                   <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z" />
                   </svg>
                 </div>
+                <input
+                  type="text"
+                  placeholder="e.g., HH-001 (found on your water bill)"
+                  value={controlNumber}
+                  onChange={(e) => handleControlChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                />
               </div>
+              {selected && (
+                <div className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  {selected.name} · Standpost #{selected.standpost}
+                </div>
+              )}
             </div>
 
             {/* Password */}
@@ -445,7 +493,7 @@ export function LoginScreen({
               {submitting
                 ? "Please wait…"
                 : isNewPassword
-                ? "Create Password & Sign In"
+                ? "Register Account"
                 : "Sign In"}
             </button>
 
@@ -455,7 +503,7 @@ export function LoginScreen({
                 onClick={toggleCreateMode}
                 className="text-[11px] text-sky-600 hover:text-sky-800 font-medium inline-flex items-center gap-1"
               >
-                {isNewPassword ? "Already set up? Sign in instead" : "First time here? Create a password"}
+                {isNewPassword ? "Already have an account? Sign in instead" : "New here? Create an account"}
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 17L17 7M17 7H7M17 7V17" />
                 </svg>
