@@ -3,22 +3,39 @@ import { buildInitialAlerts, genReading, computeBill, peso } from "./data";
 import { AdminView } from "./views/AdminView";
 import { ResidentView } from "./views/ResidentView";
 import { GcashModal } from "./components/GcashModal";
-import { Toast } from "./ui/atoms";
+import { Toast, Btn } from "./ui/atoms";
 import {
   getToken, adminLogin, adminLogout,
   fetchResidents, fetchBills, fetchBillingPeriods, generateBills,
   fetchReadings, fetchLatestReading,
-  initiateGcash, recordCash, confirmGcash, fetchPayments,
+  initiateGcash, recordCash, recordUnpaid, confirmGcash, fetchPayments,
   residentLogin, residentGoogleLogin, residentLogout,
-  updateResidentProfile, resetResidentPassword, resolveAlertApi,
+  updateResidentProfile, resetResidentPassword, resolveAlertApi, unresolveAlertApi,
   createHousehold, fetchAlerts,
 } from "./api";
 import { residentToHousehold } from "./databridge.js";
+import { jwtDecode } from "jwt-decode";
 
 // ── Mode flag ─────────────────────────────────────────────────
 // Set to true once you have the backend running and seeded.
 // When false, the app runs fully on mock data (original behaviour).
 const USE_API = true;
+
+// Restore a saved session on refresh: decode the stored JWT and, if it's still
+// valid (not expired), return its payload so the app can re-enter the portal
+// instead of bouncing back to the login screen. Only used when USE_API is true.
+function readSession(role) {
+  if (!USE_API) return null;
+  const token = getToken(role);
+  if (!token) return null;
+  try {
+    const payload = jwtDecode(token);
+    if (payload.exp && payload.exp * 1000 <= Date.now()) return null; // expired
+    return payload; // admin: { role, email }  |  resident: { role, householdId }
+  } catch {
+    return null;
+  }
+}
 
 // The header's Admin/Resident toggle was removed — which portal shows is now
 // determined by the URL path instead (/admin or /resident).
@@ -27,23 +44,29 @@ function getViewFromPath() {
 }
 
 export default function WaterSystemPrototype() {
+  // Rehydrate any saved session so a refresh keeps the admin/resident logged in.
+  const adminSession = readSession("admin");
+  const residentSession = readSession("resident");
+
   const [view] = useState(getViewFromPath);
-  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
-  const [residentAuthenticated, setResidentAuthenticated] = useState(false);
-  const [adminEmail, setAdminEmail] = useState("");
+  const [adminAuthenticated, setAdminAuthenticated] = useState(!!adminSession);
+  const [residentAuthenticated, setResidentAuthenticated] = useState(!!residentSession);
+  const [adminEmail, setAdminEmail] = useState(adminSession?.email || "");
   const [residentLoginHouseholdId, setResidentLoginHouseholdId] = useState(null);
 
   // shared state — populated either from API or from mock data
   const [households, setHouseholds] = useState([]);
   const [alerts, setAlerts] = useState([]);
-  const [activeResidentId, setActiveResidentId] = useState(null);
+  const [activeResidentId, setActiveResidentId] = useState(residentSession?.householdId || null);
 
   const [toast, setToast] = useState(null);
-  const [adminPage, setAdminPage] = useState("login");
-  const [residentPage, setResidentPage] = useState("login");
+  const [adminPage, setAdminPage] = useState(adminSession ? "dashboard" : "login");
+  const [residentPage, setResidentPage] = useState(residentSession ? "dashboard" : "login");
   const [alertFilter, setAlertFilter] = useState("All");
   const [selectedAlertId, setSelectedAlertId] = useState(null);
   const [paymentModal, setPaymentModal] = useState(null);
+  // { id, action: "resolve" | "unresolve" } while a confirmation is pending.
+  const [confirmAlert, setConfirmAlert] = useState(null);
   const [paymentStep, setPaymentStep] = useState("confirm");
   const [paymentReceipt, setPaymentReceipt] = useState(null);
   const [loading, setLoading] = useState(USE_API);
@@ -241,10 +264,10 @@ export default function WaterSystemPrototype() {
     return value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value) && /[^A-Za-z0-9]/.test(value);
   }
 
-  async function handleResidentLogin({ householdId, password, confirmPassword }) {
+  async function handleResidentLogin({ householdId, password, confirmPassword, email, username }) {
     if (USE_API) {
       try {
-        const result = await residentLogin({ householdId, password, confirmPassword });
+        const result = await residentLogin({ householdId, password, confirmPassword, email, username });
         if (result.success) {
           setActiveResidentId(householdId);
           setResidentAuthenticated(true);
@@ -404,6 +427,29 @@ export default function WaterSystemPrototype() {
     );
   }
 
+  // Undo an accidental payment — reverts a Paid bill back to Unpaid.
+  async function markUnpaid(id) {
+    if (USE_API) {
+      try {
+        const household = households.find((h) => h.id === id);
+        if (!household?.bill_id) throw new Error("No bill found for this household.");
+        await recordUnpaid(household.bill_id);
+        await loadFromAPI(true); // refresh from backend
+        showToast("Payment reverted — bill marked unpaid.", "success");
+      } catch (err) {
+        showToast("Could not revert payment: " + err.message, "warn");
+      }
+      return;
+    }
+
+    // Mock path
+    setHouseholds((prev) =>
+      prev.map((h) =>
+        h.id === id ? { ...h, paymentStatus: "Unpaid", paymentMethod: null } : h
+      )
+    );
+  }
+
   async function receiveGcashPayment(id) {
     if (USE_API) {
       try {
@@ -429,17 +475,31 @@ export default function WaterSystemPrototype() {
     showToast(`${id} GCash payment received and confirmed`, "success");
   }
 
-  async function resolveAlert(id) {
+  // Opening the confirmation modal — both the table row and the detail panel
+  // route through these so resolving/unresolving always asks first. Unresolve
+  // exists so an admin can undo an alert that was resolved by accident.
+  function resolveAlert(id) {
+    setConfirmAlert({ id, action: "resolve" });
+  }
+
+  function unresolveAlert(id) {
+    setConfirmAlert({ id, action: "unresolve" });
+  }
+
+  async function performAlertAction(id, action) {
+    setConfirmAlert(null);
+    const resolving = action === "resolve";
+    const nextStatus = resolving ? "Resolved" : "Unresolved";
     if (USE_API) {
       try {
-        await resolveAlertApi(id);
+        await (resolving ? resolveAlertApi(id) : unresolveAlertApi(id));
       } catch (err) {
-        showToast("Could not resolve alert: " + err.message, "warn");
+        showToast(`Could not ${action} alert: ` + err.message, "warn");
         return;
       }
     }
-    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: "Resolved" } : a)));
-    showToast("Alert marked as resolved", "success");
+    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, status: nextStatus } : a)));
+    showToast(`Alert marked as ${nextStatus.toLowerCase()}`, "success");
   }
 
   // ── GCash payment ────────────────────────────────────────────
@@ -530,7 +590,7 @@ export default function WaterSystemPrototype() {
   }
 
   return (
-    <div className="w-full min-h-[700px] bg-slate-50 text-slate-800" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+    <div className="w-full min-h-[700px] bg-slate-50 text-slate-800" style={{ fontFamily: "'Source Sans 3', system-ui, sans-serif" }}>
       <style>{`
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
@@ -550,6 +610,7 @@ export default function WaterSystemPrototype() {
           onAdminLogout={handleAdminLogout}
           adminEmail={adminEmail}
           markPaid={markPaid}
+          markUnpaid={markUnpaid}
           receiveGcashPayment={receiveGcashPayment}
           showToast={showToast}
           alertFilter={alertFilter}
@@ -557,6 +618,7 @@ export default function WaterSystemPrototype() {
           selectedAlertId={selectedAlertId}
           setSelectedAlertId={setSelectedAlertId}
           resolveAlert={resolveAlert}
+          unresolveAlert={unresolveAlert}
           onResetResidentPassword={handleResetResidentPassword}
           onGenerateBills={handleGenerateBills}
           onAddHousehold={handleAddHousehold}
@@ -593,6 +655,38 @@ export default function WaterSystemPrototype() {
           }}
         />
       )}
+      {confirmAlert && (() => {
+        const alert = alerts.find((a) => a.id === confirmAlert.id);
+        if (!alert) return null;
+        const resolving = confirmAlert.action === "resolve";
+        const verb = resolving ? "Resolve" : "Unresolve";
+        return (
+          <div
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+            onClick={() => setConfirmAlert(null)}
+          >
+            <div
+              className="bg-white rounded-2xl w-80 overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-5 py-4 border-b border-slate-100">
+                <div className="font-bold text-slate-800">{verb} alert?</div>
+              </div>
+              <div className="p-5 text-sm text-slate-600">
+                <p className="mb-4">
+                  Mark alert <span className="font-semibold text-slate-800">{alert.id}</span> for{" "}
+                  <span className="font-semibold text-slate-800">{alert.householdId} — {alert.name}</span>{" "}
+                  ({alert.type}) as {resolving ? "resolved" : "unresolved"}?
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <Btn onClick={() => setConfirmAlert(null)}>Cancel</Btn>
+                  <Btn variant="primary" onClick={() => performAlertAction(alert.id, confirmAlert.action)}>{verb}</Btn>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       <Toast toast={toast} />
     </div>
   );

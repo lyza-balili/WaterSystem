@@ -50,6 +50,7 @@ export function Btn({ children, onClick, variant = "outline", tone = "default", 
     primary: "bg-[#1e3a5f] text-white hover:bg-[#16304f]",
     secondary: "bg-sky-600 text-white hover:bg-sky-700",
     ghost: "text-sky-700 hover:underline",
+    ghostMuted: "text-slate-500 hover:text-slate-700 hover:underline",
   };
 
   const toneOverrides = {

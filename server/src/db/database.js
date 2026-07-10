@@ -148,6 +148,9 @@ function initSchema() {
   if (!residentAccountColumns.includes("reset_code_expires")) {
     db.exec("ALTER TABLE resident_accounts ADD COLUMN reset_code_expires TEXT");
   }
+  if (!residentAccountColumns.includes("username")) {
+    db.exec("ALTER TABLE resident_accounts ADD COLUMN username TEXT");
+  }
 }
 
 initSchema();

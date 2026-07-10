@@ -262,6 +262,19 @@ router.post("/bills/:id/mark-paid", authMiddleware("admin"), (req, res) => {
   res.json({ success: true });
 });
 
+// POST /api/bills/:id/mark-unpaid  (admin only) — undo a payment recorded by mistake
+router.post("/bills/:id/mark-unpaid", authMiddleware("admin"), (req, res) => {
+  const bill = db.prepare("SELECT * FROM bills WHERE id = ?").get(req.params.id);
+  if (!bill) return res.status(404).json({ error: "Bill not found." });
+
+  db.prepare(
+    `UPDATE bills SET payment_status = 'Unpaid', payment_method = NULL, payment_ref = NULL, payment_date = NULL
+     WHERE id = ?`
+  ).run(req.params.id);
+
+  res.json({ success: true });
+});
+
 // POST /api/bills/:id/gcash/initiate — resident starts a GCash payment (mock: sets to Pending)
 router.post("/bills/:id/gcash/initiate", authMiddleware("resident"), (req, res) => {
   const bill = db.prepare("SELECT * FROM bills WHERE id = ?").get(req.params.id);
@@ -398,6 +411,15 @@ router.get("/alerts", (req, res) => {
 router.post("/alerts/:id/resolve", authMiddleware("admin"), (req, res) => {
   const result = db
     .prepare("UPDATE alerts SET status = 'Resolved' WHERE id = ?")
+    .run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: "Alert not found." });
+  res.json({ success: true });
+});
+
+// Undo an accidental resolve — moves an alert back to Unresolved.
+router.post("/alerts/:id/unresolve", authMiddleware("admin"), (req, res) => {
+  const result = db
+    .prepare("UPDATE alerts SET status = 'Unresolved' WHERE id = ?")
     .run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: "Alert not found." });
   res.json({ success: true });
