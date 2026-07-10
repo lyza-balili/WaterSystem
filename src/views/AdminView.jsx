@@ -70,6 +70,7 @@ export function AdminView(props) {
     onAdminLogout,
     adminEmail,
     markPaid,
+    markUnpaid,
     receiveGcashPayment,
     showToast,
     alertFilter,
@@ -77,6 +78,7 @@ export function AdminView(props) {
     selectedAlertId,
     setSelectedAlertId,
     resolveAlert,
+    unresolveAlert,
     onResetResidentPassword,
     onGenerateBills,
     onAddHousehold,
@@ -84,6 +86,7 @@ export function AdminView(props) {
 
   const unresolvedCount = alerts.filter((a) => a.status === "Unresolved").length;
   const gcashPendingCount = households.filter((h) => h.paymentStatus === "GCash Pending").length;
+  const [collapsed, setCollapsed] = useState(false);
 
   if (!adminAuthenticated || page === "login") {
     return <AdminLoginScreen onAdminLogin={onAdminLogin} />;
@@ -92,60 +95,83 @@ export function AdminView(props) {
   return (
     <div className="flex">
       {/* Sidebar */}
-      <div className="w-52 bg-[#1e3a5f] min-h-[680px] text-white flex flex-col flex-shrink-0">
-        {/* Logo block */}
-        <div className="flex items-center gap-2.5 px-4 py-4 border-b border-white/10">
+      <div className={`${collapsed ? "w-16" : "w-52"} bg-[#1e3a5f] min-h-[680px] text-white flex flex-col flex-shrink-0 transition-[width] duration-200`}>
+        {/* Logo block + collapse toggle */}
+        <div className={`flex items-center px-3 py-4 border-b border-white/10 ${collapsed ? "flex-col gap-3" : "gap-2.5"}`}>
           <img
             src={logoImage}
             alt="logo"
             className="w-10 h-10 rounded-full object-cover flex-shrink-0 shadow"
           />
-          <div className="leading-[1.25]">
-            <div className="font-extrabold text-[10px] uppercase tracking-wide">Barangay</div>
-            <div className="font-extrabold text-[10px] uppercase tracking-wide">Kinamlutan</div>
-            <div className="font-extrabold text-[10px] uppercase tracking-wide">Water System</div>
-          </div>
+          {!collapsed && (
+            <div className="leading-[1.25] flex-1 min-w-0">
+              <div className="font-extrabold text-[10px] uppercase tracking-wide">Barangay</div>
+              <div className="font-extrabold text-[10px] uppercase tracking-wide">Kinamlutan</div>
+              <div className="font-extrabold text-[10px] uppercase tracking-wide">Water System</div>
+            </div>
+          )}
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="w-7 h-7 flex items-center justify-center rounded-md text-blue-200 hover:text-white hover:bg-white/10 transition flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={collapsed ? "M9 5l7 7-7 7" : "M15 19l-7-7 7-7"} />
+            </svg>
+          </button>
         </div>
 
         {/* Admin info */}
-        <div className="flex items-center gap-2.5 px-4 py-3 border-b border-white/10">
-          <div className="w-8 h-8 rounded-full bg-sky-500 flex items-center justify-center flex-shrink-0">
+        <div className={`flex items-center px-3 py-3 border-b border-white/10 ${collapsed ? "justify-center" : "gap-2.5"}`}>
+          <div className="w-8 h-8 rounded-full bg-sky-500 flex items-center justify-center flex-shrink-0" title={collapsed ? adminEmail || "Admin" : undefined}>
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-semibold text-white truncate">{adminEmail || "Admin"}</div>
-            <div className="text-[10px] text-blue-300">Water Office</div>
-          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-semibold text-white truncate">{adminEmail || "Admin"}</div>
+              <div className="text-[10px] text-blue-300">Water Office</div>
+            </div>
+          )}
         </div>
 
         {/* Nav */}
         <nav className="flex-1 py-1.5">
           {NAV_ITEMS.map((item) => {
             const isActive = page === item.id;
+            const badgeCount =
+              item.id === "alerts" ? unresolvedCount : item.id === "billing" ? gcashPendingCount : 0;
+            const badgeColor = item.id === "alerts" ? "text-rose-400" : "text-sky-300";
             return (
               <button
                 key={item.id}
                 onClick={() => setPage(item.id)}
-                className={`w-full text-left px-4 py-2.5 text-[12px] flex items-center gap-2.5 transition border-l-2 ${
+                title={collapsed ? item.label : undefined}
+                className={`w-full text-[12px] flex items-center transition border-l-2 ${
+                  collapsed ? "justify-center px-0 py-2.5" : "text-left px-4 py-2.5 gap-2.5"
+                } ${
                   isActive
                     ? "bg-white/15 font-semibold border-sky-400 text-white"
                     : "text-blue-100 hover:bg-white/5 border-transparent"
                 }`}
               >
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={item.icon} />
-                </svg>
-                <span className="truncate">{item.label}</span>
-                {item.id === "alerts" && unresolvedCount > 0 && (
-                  <span className="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
-                    {unresolvedCount}
-                  </span>
-                )}
-                {item.id === "billing" && gcashPendingCount > 0 && (
-                  <span className="ml-auto bg-sky-400 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
-                    {gcashPendingCount}
+                <span className="relative flex-shrink-0">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={item.icon} />
+                  </svg>
+                  {/* Collapsed: show the count as a small number on the icon corner */}
+                  {collapsed && badgeCount > 0 && (
+                    <span className={`absolute -top-1.5 -right-2.5 ${badgeColor} text-[10px] font-bold tabular-nums leading-none`}>
+                      {badgeCount}
+                    </span>
+                  )}
+                </span>
+                {!collapsed && <span className="truncate">{item.label}</span>}
+                {!collapsed && badgeCount > 0 && (
+                  <span className={`ml-auto ${badgeColor} text-[12px] font-semibold tabular-nums leading-none`}>
+                    {badgeCount}
                   </span>
                 )}
               </button>
@@ -158,9 +184,12 @@ export function AdminView(props) {
           onClick={() => {
             if (typeof onAdminLogout === "function") onAdminLogout();
           }}
-          className="flex items-center gap-2 px-4 py-3 text-[12px] text-rose-300 hover:text-white border-t border-white/10 transition"
+          title={collapsed ? "Logout" : undefined}
+          className={`flex items-center py-3 text-[12px] text-rose-300 hover:text-white border-t border-white/10 transition ${
+            collapsed ? "justify-center px-0" : "gap-2 px-4"
+          }`}
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -168,7 +197,7 @@ export function AdminView(props) {
               d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
             />
           </svg>
-          Logout
+          {!collapsed && "Logout"}
         </button>
       </div>
 
@@ -197,6 +226,7 @@ export function AdminView(props) {
             <BillingPage
               households={households}
               markPaid={markPaid}
+              markUnpaid={markUnpaid}
               receiveGcashPayment={receiveGcashPayment}
               showToast={showToast}
               billsGenerated={billsGenerated}
@@ -213,6 +243,7 @@ export function AdminView(props) {
               selectedAlertId={selectedAlertId}
               setSelectedAlertId={setSelectedAlertId}
               resolveAlert={resolveAlert}
+              unresolveAlert={unresolveAlert}
             />
           )}
           {page === "households" && (

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Badge, StatCard, Btn } from "../ui/atoms";
 import { SectionHeader } from "../components/SectionHeader";
 import { BillReplica } from "../components/BillReplica";
@@ -146,10 +146,24 @@ export function ConsumptionPage({ households }) {
   );
 }
 
-export function BillingPage({ households, markPaid, receiveGcashPayment, showToast, billsGenerated, unpaidCount, totalCollected, onGenerateBills }) {
+export function BillingPage({ households, markPaid, markUnpaid, receiveGcashPayment, showToast, billsGenerated, unpaidCount, totalCollected, onGenerateBills }) {
   const paidCount = households.length - unpaidCount;
   const gcashPendingCount = households.filter((h) => h.paymentStatus === "GCash Pending").length;
   const [statusFilter, setStatusFilter] = React.useState("All");
+  // { action: "paid" | "unpaid", id, name, amt } while a confirmation is pending.
+  const [confirmPay, setConfirmPay] = React.useState(null);
+
+  function confirmPayment() {
+    if (!confirmPay) return;
+    const { id, action } = confirmPay;
+    setConfirmPay(null);
+    if (action === "unpaid") {
+      markUnpaid(id);
+    } else {
+      markPaid(id);
+      showToast(`${id} marked as paid`, "success");
+    }
+  }
   const monthOptions = [
     "All months",
     "January",
@@ -385,8 +399,12 @@ export function BillingPage({ households, markPaid, receiveGcashPayment, showToa
                       >
                         Confirm GCash
                       </Btn>
+                    ) : household.paymentStatus === "Paid" ? (
+                      <Btn variant="ghostMuted" onClick={() => setConfirmPay({ action: "unpaid", id: household.id, name: household.name, amt: record.amt })}>
+                        Mark unpaid
+                      </Btn>
                     ) : selectedPeriodKey && record.period === selectedPeriodKey && household.paymentStatus === "Unpaid" ? (
-                      <Btn variant="ghost" onClick={() => { markPaid(household.id); showToast(`${household.id} marked as paid`, "success"); }}>
+                      <Btn variant="ghost" onClick={() => setConfirmPay({ action: "paid", id: household.id, name: household.name, amt: record.amt })}>
                         Mark paid
                       </Btn>
                     ) : (
@@ -411,11 +429,43 @@ export function BillingPage({ households, markPaid, receiveGcashPayment, showToa
         <br />
         CC CM² = Current Consumed CM²  |  TCCM² = Total Cumulative Meter Reading  |  PC CM² = Previous Consumed CM²
       </div>
+
+      {confirmPay && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => setConfirmPay(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-80 overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-100">
+              <div className="font-bold text-slate-800">
+                {confirmPay.action === "unpaid" ? "Mark bill as unpaid?" : "Mark bill as paid?"}
+              </div>
+            </div>
+            <div className="p-5 text-sm text-slate-600">
+              <p className="mb-4">
+                {confirmPay.action === "unpaid" ? "Revert the recorded payment of " : "Record a cash payment of "}
+                <span className="font-semibold text-slate-800">{peso(confirmPay.amt)}</span> for{" "}
+                <span className="font-semibold text-slate-800">{confirmPay.id} — {confirmPay.name}</span>
+                {confirmPay.action === "unpaid" ? " back to unpaid?" : "?"}
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Btn onClick={() => setConfirmPay(null)}>Cancel</Btn>
+                <Btn variant="primary" onClick={confirmPayment}>
+                  {confirmPay.action === "unpaid" ? "Mark unpaid" : "Mark paid"}
+                </Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
-export function AlertsPage({ alerts, filter, setFilter, selectedAlertId, setSelectedAlertId, resolveAlert }) {
+export function AlertsPage({ alerts, filter, setFilter, selectedAlertId, setSelectedAlertId, resolveAlert, unresolveAlert }) {
   const filters = ["All", "Unresolved", "High Flow", "Leak Detected", "No Data", "Resolved"];
   const counts = {
     All: alerts.length,
@@ -435,6 +485,18 @@ export function AlertsPage({ alerts, filter, setFilter, selectedAlertId, setSele
   });
 
   const selected = alerts.find((a) => a.id === selectedAlertId) || filtered[0];
+
+  // The alert opened in the zoomed-in detail modal (via View or a row click).
+  const [viewId, setViewId] = useState(null);
+  const viewed = viewId ? alerts.find((a) => a.id === viewId) : null;
+
+  function openDetail(id) {
+    setSelectedAlertId(id); // keep the row highlighted underneath
+    setViewId(id);
+  }
+
+  const typeColor = (t) =>
+    t === "Leak Detected" ? "text-rose-600" : t === "High Flow" ? "text-amber-600" : "text-slate-400";
 
   return (
     <>
@@ -481,7 +543,7 @@ export function AlertsPage({ alerts, filter, setFilter, selectedAlertId, setSele
             {filtered.map((a, i) => (
               <tr
                 key={a.id}
-                onClick={() => setSelectedAlertId(a.id)}
+                onClick={() => openDetail(a.id)}
                 className={`cursor-pointer ${selected?.id === a.id ? "bg-sky-50" : i % 2 ? "bg-slate-50" : "bg-white"} hover:bg-sky-50`}
               >
                 <td className="px-3 py-1.5 text-slate-500">{a.id}</td>
@@ -497,11 +559,14 @@ export function AlertsPage({ alerts, filter, setFilter, selectedAlertId, setSele
                 </td>
                 <td className="px-3 py-1.5 text-center">
                   {a.status === "Unresolved" ? (
-                    <Btn variant="primary" onClick={(e) => { e.stopPropagation(); resolveAlert(a.id); }}>
+                    <Btn variant="ghost" onClick={(e) => { e.stopPropagation(); resolveAlert(a.id); }}>
                       Resolve
                     </Btn>
                   ) : (
-                    <Btn onClick={(e) => { e.stopPropagation(); setSelectedAlertId(a.id); }}>View</Btn>
+                    <div className="flex items-center justify-center gap-3">
+                      <Btn variant="ghost" onClick={(e) => { e.stopPropagation(); openDetail(a.id); }}>View</Btn>
+                      <Btn variant="ghostMuted" onClick={(e) => { e.stopPropagation(); unresolveAlert(a.id); }}>Unresolve</Btn>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -513,19 +578,61 @@ export function AlertsPage({ alerts, filter, setFilter, selectedAlertId, setSele
         </table>
       </div>
 
-      {selected && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-6 flex-wrap text-[12px]">
-          <div>
-            <div className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">Selected alert detail</div>
-            <div className="font-semibold text-slate-700">{selected.id} | {selected.householdId} | {selected.name} | Standpost #{selected.standpost}</div>
+      {viewed && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => setViewId(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-[420px] max-w-full overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between">
+              <div>
+                <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Alert detail</div>
+                <div className="font-bold text-slate-800 text-lg">{viewed.id}</div>
+              </div>
+              <button onClick={() => setViewId(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+            </div>
+
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <div className="font-semibold text-slate-800">{viewed.name}</div>
+                  <div className="text-xs text-slate-500">{viewed.householdId} · Standpost #{viewed.standpost}</div>
+                </div>
+                {viewed.status === "Unresolved" ? <Badge tone="bad">Unresolved</Badge> : <Badge tone="good">Resolved</Badge>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-[13px]">
+                <div className="bg-slate-50 rounded-lg px-3 py-2">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wide">Type</div>
+                  <div className={`font-semibold ${typeColor(viewed.type)}`}>{viewed.type}</div>
+                </div>
+                <div className="bg-slate-50 rounded-lg px-3 py-2">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wide">Time</div>
+                  <div className="font-semibold text-slate-700">{viewed.time}</div>
+                </div>
+                <div className="bg-slate-50 rounded-lg px-3 py-2">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wide">Flow rate</div>
+                  <div className="font-semibold text-slate-700">{viewed.flowRate}</div>
+                </div>
+                <div className="bg-slate-50 rounded-lg px-3 py-2">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wide">Threshold</div>
+                  <div className="font-semibold text-slate-700">{viewed.threshold}</div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end mt-5">
+                <Btn onClick={() => setViewId(null)}>Close</Btn>
+                {viewed.status === "Unresolved" ? (
+                  <Btn variant="primary" onClick={() => { setViewId(null); resolveAlert(viewed.id); }}>Mark as Resolved</Btn>
+                ) : (
+                  <Btn variant="primary" onClick={() => { setViewId(null); unresolveAlert(viewed.id); }}>Mark as Unresolved</Btn>
+                )}
+              </div>
+            </div>
           </div>
-          <div><span className="text-slate-400">Type</span><br /><span className="font-medium">{selected.type}</span></div>
-          <div><span className="text-slate-400">Flow rate</span><br /><span className="font-medium">{selected.flowRate}</span></div>
-          <div><span className="text-slate-400">Threshold</span><br /><span className="font-medium">{selected.threshold}</span></div>
-          <div><span className="text-slate-400">Status</span><br /><span className="font-medium">{selected.status}</span></div>
-          {selected.status === "Unresolved" && (
-            <Btn variant="primary" className="ml-auto" onClick={() => resolveAlert(selected.id)}>Mark as Resolved</Btn>
-          )}
         </div>
       )}
     </>
@@ -1092,6 +1199,10 @@ export function SettingsPage({ showToast }) {
 export function BillStatementsPage({ households }) {
   const [searchTerm, setSearchTerm] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("All");
+  const [selectedIds, setSelectedIds] = React.useState(() => new Set());
+  // While printing, holds the exact list of bills to render so only the chosen
+  // ones make it into the PDF; null means "show the browsing list on screen".
+  const [printList, setPrintList] = React.useState(null);
 
   const filtered = households.filter((h) => {
     if (statusFilter !== "All" && h.paymentStatus !== statusFilter) return false;
@@ -1101,11 +1212,38 @@ export function BillStatementsPage({ households }) {
     );
   });
 
-  const printAllStatements = () => {
-    setSearchTerm("");
-    setStatusFilter("All");
+  const toggleSelect = (id) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const allShownSelected = filtered.length > 0 && filtered.every((h) => selectedIds.has(h.id));
+
+  const toggleSelectAll = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allShownSelected) filtered.forEach((h) => next.delete(h.id));
+      else filtered.forEach((h) => next.add(h.id));
+      return next;
+    });
+
+  // Render `list` into the print grid, print, then restore the on-screen view.
+  const printBills = (list) => {
+    if (!list || list.length === 0) return;
+    setPrintList(list);
+    const cleanup = () => {
+      setPrintList(null);
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
     window.requestAnimationFrame(() => window.print());
   };
+
+  const selectedBills = filtered.filter((h) => selectedIds.has(h.id));
+  const printAllStatements = () => printBills(households);
+  const renderList = printList || filtered;
 
   return (
     <>
@@ -1144,24 +1282,64 @@ export function BillStatementsPage({ households }) {
         </div>
 
         <div className="ml-auto flex flex-wrap gap-2">
-          <Btn onClick={() => window.print()}>Print statements</Btn>
+          <Btn onClick={() => printBills(filtered)}>Print shown</Btn>
+          <Btn
+            variant="primary"
+            disabled={selectedBills.length === 0}
+            onClick={() => printBills(selectedBills)}
+          >
+            Print selected ({selectedBills.length})
+          </Btn>
           <Btn variant="secondary" onClick={printAllStatements}>Print all statements</Btn>
         </div>
       </div>
 
-      <div className="text-xs text-slate-500 mb-4">
-        {searchTerm || statusFilter !== "All"
-          ? `Showing ${filtered.length} ${statusFilter === "All" ? "household" : `${statusFilter.toLowerCase()} household`}${filtered.length !== 1 ? "s" : ""}`
-          : `Displaying all ${households.length} households`}
+      <div className="flex items-center gap-4 mb-4">
+        <div className="text-xs text-slate-500">
+          {searchTerm || statusFilter !== "All"
+            ? `Showing ${filtered.length} ${statusFilter === "All" ? "household" : `${statusFilter.toLowerCase()} household`}${filtered.length !== 1 ? "s" : ""}`
+            : `Displaying all ${households.length} households`}
+        </div>
+        {filtered.length > 0 && (
+          <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={allShownSelected}
+              onChange={toggleSelectAll}
+              className="check-circle"
+            />
+            Select all shown
+          </label>
+        )}
+        {selectedIds.size > 0 && (
+          <button onClick={() => setSelectedIds(new Set())} className="text-xs text-sky-600 hover:underline">
+            Clear selection ({selectedIds.size})
+          </button>
+        )}
       </div>
 
       <div className="print-bills-grid">
-        {filtered.length > 0 ? (
-          chunk(filtered, 2).map((pair) => (
+        {renderList.length > 0 ? (
+          chunk(renderList, 2).map((pair) => (
             <div key={pair.map((h) => h.id).join("-")} className="print-bill-page">
-              {pair.map((household) => (
+              {pair.map((household, idx) => (
                 <div key={household.id} className="print-bill-item">
+                  <div className="no-print w-full max-w-[640px] mx-auto mb-1.5">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(household.id)}
+                        onChange={() => toggleSelect(household.id)}
+                        className="check-circle"
+                      />
+                      Include in print — {household.id} · {household.name}
+                    </label>
+                  </div>
                   <BillReplica me={household} paymentStamp={household.paymentStamp} />
+                  {/* Dashed cut line between the two bills sharing a sheet. */}
+                  {idx < pair.length - 1 && (
+                    <div className="bill-separator w-full mt-6 border-t-2 border-dashed border-slate-400" />
+                  )}
                 </div>
               ))}
             </div>

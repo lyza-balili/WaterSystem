@@ -9,11 +9,40 @@ html, body, #root {
 
 body {
   @apply bg-slate-50 text-slate-800;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: "Source Sans 3", system-ui, sans-serif;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Circular checkbox with a white checkmark when checked. */
+.check-circle {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  border: 1.5px solid #cbd5e1; /* slate-300 */
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.check-circle:checked {
+  background-color: #0284c7; /* sky-600 */
+  border-color: #0284c7;
+}
+.check-circle:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
 .print-bills-grid {
@@ -61,6 +90,11 @@ body {
     visibility: visible !important;
   }
 
+  /* The per-card "Include in print" checkbox is screen-only. */
+  .print-bills-grid .no-print {
+    display: none !important;
+  }
+
   .print-bills-grid {
     position: absolute;
     top: 0;
@@ -76,6 +110,7 @@ body {
     grid-template-columns: 1fr;
     gap: 0.3in;
     width: 100%;
+    padding: 0.4in;
     page-break-after: always;
     break-after: page;
   }
@@ -124,7 +159,10 @@ body {
   }
 }
 
+/* margin: 0 removes the browser-injected print header/footer (page title +
+   localhost URL + date) from the generated PDF. Each printable block supplies
+   its own inner padding below so content still keeps a clean margin. */
 @page {
-  margin: 0.5in;
+  margin: 0;
   size: letter portrait;
 }
