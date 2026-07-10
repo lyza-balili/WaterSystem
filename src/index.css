@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.print-bills-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+/* On screen, each print-bill-page pairing is invisible to layout so its two
+   household cards flow individually into the responsive grid above. Only
+   under @media print does it become a real 2-column page-break unit. */
+.print-bill-page {
+  display: contents;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* For resident single bill printing */
+  .print-area,
+  .print-area * {
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 0.5in;
+  }
+
+  .print-area .no-print {
+    display: none !important;
+  }
+
+  /* For admin bill statements (2 per page) */
+  .print-bills-grid,
+  .print-bills-grid * {
+    visibility: visible !important;
+  }
+
+  .print-bills-grid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+    width: 100%;
+  }
+
+  .print-bill-page {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.3in;
+    width: 100%;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .print-bill-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .print-bill-item {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .print-bill-page .print-bill-item {
+    width: 100%;
+  }
+
+  .bill-replica {
+    width: 100%;
+    max-width: 7.5in;
+    min-height: 4.5in;
+    margin: 0 auto;
+  }
+
+  /* Two stacked bills don't naturally fit one portrait page at full size —
+     shrink with `zoom` (not `transform`) so the *layout* height shrinks too,
+     not just the rendered pixels. `zoom` is Chromium/Edge-specific but that
+     covers the browsers this app's print flow is built/tested against. */
+  .print-bill-page .bill-replica {
+    transform: none !important;
+    zoom: 0.62;
+    min-height: 0;
+    max-width: none;
+  }
+
+  .print-bill-item,
+  .print-bill-item * {
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+}
+
+@page {
+  margin: 0.5in;
+  size: letter portrait;
+}

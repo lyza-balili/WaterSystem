@@ -1,0 +1,1185 @@
+import React from "react";
+import { Badge, StatCard, Btn } from "../ui/atoms";
+import { SectionHeader } from "../components/SectionHeader";
+import { BillReplica } from "../components/BillReplica";
+import { BILLING_PERIOD, RATE_PER_CM3, MIN_BILL, dateStamp, peso } from "../data";
+
+export function DashboardPage({ households, alerts, totalCollected, unpaidCount, setPage }) {
+  const top10 = households.slice(0, 10);
+  const recentAlerts = alerts.slice(0, 5);
+  const goto = (p) => { if (typeof setPage === "function") setPage(p); };
+
+  return (
+    <>
+      <SectionHeader title="Admin Dashboard" sub={`Barangay Kinamlutan Water System — ${new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}`} />
+      <div className="flex gap-3 flex-wrap mb-5">
+        <button onClick={() => goto("households")} className="flex-1 min-w-[130px] text-left">
+          <StatCard label="Total households" value={households.length} />
+        </button>
+        <button onClick={() => goto("consumption")} className="flex-1 min-w-[130px] text-left">
+          <StatCard label="Active connections" value={households.length} tone="good" />
+        </button>
+        <button onClick={() => goto("alerts")} className="flex-1 min-w-[130px] text-left">
+          <StatCard label="Alerts today" value={alerts.filter((a) => a.status === "Unresolved").length} tone="warn" />
+        </button>
+        <button onClick={() => goto("billing")} className="flex-1 min-w-[130px] text-left">
+          <StatCard label="Unpaid bills" value={unpaidCount} tone="bad" />
+        </button>
+        <button onClick={() => goto("billing")} className="flex-1 min-w-[130px] text-left">
+          <StatCard label="Total collected" value={peso(totalCollected)} tone="good" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mb-5">
+        <div className="col-span-2 bg-white rounded-lg border border-slate-200 p-4">
+          <div className="font-semibold text-[13px] text-slate-700 mb-3">Water consumption this month (CM³) — top households</div>
+          <div className="flex items-end gap-2 h-32">
+            {top10.map((h) => {
+              const heightPct = Math.min((h.consumption / 60) * 100, 100);
+              return (
+                <div key={h.id} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                  <div className="text-[9px] text-slate-400 mb-1">{h.consumption}</div>
+                  <div
+                    className={`w-full rounded-t-sm transition-all duration-700 ${h.consumption > 35 ? "bg-amber-400" : "bg-sky-700"}`}
+                    style={{ height: `${heightPct}%`, minHeight: "6px" }}
+                  />
+                  <div className="text-[9px] text-slate-500 mt-1">{h.id.replace("HH-", "")}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="font-semibold text-[13px] text-slate-700 mb-3">Recent alerts</div>
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="text-slate-400 border-b border-slate-100">
+                <th className="text-left font-medium pb-1.5">Household</th>
+                <th className="text-left font-medium pb-1.5">Type</th>
+                <th className="text-right font-medium pb-1.5">Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentAlerts.map((a) => (
+                <tr key={a.id} className="border-b border-slate-50">
+                  <td className="py-1.5 font-medium text-slate-700">{a.householdId}</td>
+                  <td className={`py-1.5 ${a.type === "Leak Detected" ? "text-rose-600" : a.type === "High Flow" ? "text-amber-600" : "text-slate-400"}`}>{a.type}</td>
+                  <td className="py-1.5 text-right text-slate-400">{a.time}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg border border-slate-200 p-4">
+        <div className="font-semibold text-[13px] text-slate-700 mb-3">Billing summary — {BILLING_PERIOD}</div>
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="bg-[#1e3a5f] text-white">
+              <th className="text-left px-3 py-2 font-semibold">Bill #</th>
+              <th className="text-left px-3 py-2 font-semibold">Household</th>
+              <th className="text-left px-3 py-2 font-semibold">Resident name</th>
+              <th className="text-right px-3 py-2 font-semibold">Standpost #</th>
+              <th className="text-right px-3 py-2 font-semibold">Curr CM³</th>
+              <th className="text-right px-3 py-2 font-semibold">Consumption</th>
+              <th className="text-right px-3 py-2 font-semibold">Total amount</th>
+              <th className="text-center px-3 py-2 font-semibold">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {households.slice(0, 6).map((h, i) => (
+              <tr key={h.id} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                <td className="px-3 py-1.5 text-slate-500">BL-{String(i + 1).padStart(3, "0")}</td>
+                <td className="px-3 py-1.5 font-medium text-slate-700">{h.id}</td>
+                <td className="px-3 py-1.5 text-slate-600">{h.name}</td>
+                <td className="px-3 py-1.5 text-right text-slate-500">{h.standpost}</td>
+                <td className="px-3 py-1.5 text-right text-slate-500">{h.currCm3}</td>
+                <td className="px-3 py-1.5 text-right text-slate-500">{h.consumption}</td>
+                <td className="px-3 py-1.5 text-right font-semibold text-slate-800">{peso(h.amount)}</td>
+                <td className="px-3 py-1.5 text-center">
+                  {h.paymentStatus === "Paid" ? <Badge tone="good">Paid</Badge> : <Badge tone="bad">Unpaid</Badge>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+export function ConsumptionPage({ households }) {
+  return (
+    <>
+      <SectionHeader title="Water Consumption" sub="Real-time readings transmitted from IoT flow sensors" />
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="bg-[#1e3a5f] text-white">
+              <th className="text-left px-3 py-2 font-semibold">Household</th>
+              <th className="text-left px-3 py-2 font-semibold">Resident</th>
+              <th className="text-right px-3 py-2 font-semibold">Prev. CM³</th>
+              <th className="text-right px-3 py-2 font-semibold">Curr. CM³</th>
+              <th className="text-right px-3 py-2 font-semibold">Flow (L/min)</th>
+              <th className="text-center px-3 py-2 font-semibold">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {households.map((h, i) => (
+              <tr key={h.id} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                <td className="px-3 py-2 font-medium text-slate-700">{h.id}</td>
+                <td className="px-3 py-2 text-slate-600">{h.name}</td>
+                <td className="px-3 py-2 text-right text-slate-500">{h.prevCm3}</td>
+                <td className="px-3 py-2 text-right font-semibold text-slate-800">{h.currCm3}</td>
+                <td className="px-3 py-2 text-right text-slate-500">{h.lastFlow}</td>
+                <td className="px-3 py-2 text-center">
+                  {h.flowType === "High flow" ? <Badge tone="bad">High flow</Badge> : <Badge tone="good">Normal</Badge>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+export function BillingPage({ households, markPaid, receiveGcashPayment, showToast, billsGenerated, unpaidCount, totalCollected, onGenerateBills }) {
+  const paidCount = households.length - unpaidCount;
+  const gcashPendingCount = households.filter((h) => h.paymentStatus === "GCash Pending").length;
+  const [statusFilter, setStatusFilter] = React.useState("All");
+  const monthOptions = [
+    "All months",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const yearOptions = ["All years", "2024", "2025", "2026", "2027"];
+  const monthMap = {
+    January: "Jan",
+    February: "Feb",
+    March: "Mar",
+    April: "Apr",
+    May: "May",
+    June: "Jun",
+    July: "Jul",
+    August: "Aug",
+    September: "Sep",
+    October: "Oct",
+    November: "Nov",
+    December: "Dec",
+  };
+  const [selectedBillingMonth, setSelectedBillingMonth] = React.useState(() => {
+    const match = BILLING_PERIOD.match(/Month of\s+(\w+)\s+(\d{4})/);
+    return match ? match[1] : "May";
+  });
+  const [selectedBillingYear, setSelectedBillingYear] = React.useState(() => {
+    const match = BILLING_PERIOD.match(/Month of\s+(\w+)\s+(\d{4})/);
+    return match ? match[2] : "2026";
+  });
+  const selectedPeriodLabel =
+    selectedBillingMonth === "All months"
+      ? selectedBillingYear === "All years"
+        ? "All records"
+        : selectedBillingYear
+      : selectedBillingYear === "All years"
+      ? selectedBillingMonth
+      : `${selectedBillingMonth} ${selectedBillingYear}`;
+  const billingRecords = households.flatMap((h) =>
+    h.history
+      .filter((rec) => {
+        const [recMonth, recYear] = rec.period.split(" ");
+        const monthMatches = selectedBillingMonth === "All months" || monthMap[selectedBillingMonth] === recMonth;
+        const yearMatches = selectedBillingYear === "All years" || selectedBillingYear === recYear;
+        return monthMatches && yearMatches;
+      })
+      .map((rec) => ({ household: h, record: rec }))
+  );
+  const selectedPeriodKey =
+    selectedBillingMonth === "All months" || selectedBillingYear === "All years"
+      ? null
+      : `${monthMap[selectedBillingMonth]} ${selectedBillingYear}`;
+
+  const filteredBillingRecords = billingRecords.filter(({ household }) => {
+    if (statusFilter === "All") return true;
+    if (statusFilter === "GCash Pending") return household.paymentStatus === "GCash Pending";
+    return statusFilter === "Paid" ? household.paymentStatus === "Paid" : household.paymentStatus === "Unpaid";
+  });
+
+  return (
+    <>
+      <SectionHeader title="Billing Management" />
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Billing month</label>
+            <select
+              value={selectedBillingMonth}
+              onChange={(e) => setSelectedBillingMonth(e.target.value)}
+              className="w-full max-w-[170px] border border-slate-300 rounded-lg px-3 py-2 bg-white text-sm font-semibold"
+            >
+              {monthOptions.map((month) => (
+                <option key={month} value={month}>{month}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Billing year</label>
+            <select
+              value={selectedBillingYear}
+              onChange={(e) => setSelectedBillingYear(e.target.value)}
+              className="w-full max-w-[110px] border border-slate-300 rounded-lg px-3 py-2 bg-white text-sm font-semibold"
+            >
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="ml-auto flex gap-2">
+          <Btn
+            variant="primary"
+            onClick={() => {
+              if (!selectedPeriodKey) {
+                showToast("Select a specific billing month and year first.", "warn");
+                return;
+              }
+              if (typeof onGenerateBills === "function") {
+                onGenerateBills(selectedPeriodKey);
+              } else {
+                showToast("Bills generated for all households", "success");
+              }
+            }}
+          >
+            Generate Bills
+          </Btn>
+          <Btn onClick={() => window.print()}>Export PDF</Btn>
+          <Btn onClick={() => {
+            const header = ["Bill #","Household","Resident name","Standpost #","Meter #","Prev CM3","Curr CM3","Consumed","Total Amount","Method","Status"];
+            const rows = filteredBillingRecords.map(({ household, record }, i) => [
+              `BL-${String(i + 1).padStart(3, "0")}`,
+              household.id,
+              household.name,
+              household.standpost,
+              household.meter,
+              record.prev,
+              record.curr,
+              record.curr - record.prev,
+              record.amt,
+              household.paymentStatus === "Paid" ? (household.paymentMethod === "GCash" ? "GCash" : "Cash") : household.paymentStatus === "GCash Pending" ? "GCash" : "Pending",
+              household.paymentStatus,
+            ]);
+            const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `billing-records-${selectedPeriodLabel.replace(/\s+/g, "-").toLowerCase()}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("Billing records exported as CSV", "success");
+          }}>Export CSV</Btn>
+        </div>
+      </div>
+
+      <div className="flex gap-3 flex-wrap mb-4">
+        <StatCard label="Total households" value={households.length} />
+        <StatCard label="Bills generated" value={billsGenerated} />
+        <StatCard label="Paid" value={paidCount} tone="good" />
+        <StatCard label="GCash pending" value={gcashPendingCount} tone="warn" />
+        <StatCard label="Unpaid" value={unpaidCount} tone="bad" />
+        <StatCard label="Total collected" value={peso(totalCollected)} tone="good" />
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        {['All', 'Paid', 'GCash Pending', 'Unpaid'].map((status) => (
+          <button
+            key={status}
+            onClick={() => setStatusFilter(status)}
+            className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border transition ${
+              statusFilter === status
+                ? status === 'Paid'
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : status === 'Unpaid'
+                  ? 'bg-rose-600 text-white border-rose-600'
+                  : status === 'GCash Pending'
+                  ? 'bg-sky-600 text-white border-sky-600'
+                  : 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            {status}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mb-3 print-area">
+        <div className="px-4 py-2.5 text-[13px] font-semibold text-slate-700 border-b border-slate-100">Billing records — {selectedPeriodLabel}</div>
+        <div className="overflow-x-auto">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="bg-[#1e3a5f] text-white">
+              <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Bill #</th>
+              <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Household</th>
+              <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Resident name</th>
+              <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Standpost #</th>
+              <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Meter #</th>
+              <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Prev CM³</th>
+              <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Curr CM³</th>
+              <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Consumed</th>
+              <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Total Amt</th>
+              <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Method</th>
+              <th className="text-center px-3 py-2 font-semibold whitespace-nowrap">Status</th>
+              <th className="text-center px-3 py-2 font-semibold whitespace-nowrap no-print">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredBillingRecords.length > 0 ? (
+              filteredBillingRecords.map(({ household, record }, i) => (
+                <tr key={`${household.id}-${record.period}`} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                  <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">BL-{String(i + 1).padStart(3, "0")}</td>
+                  <td className="px-3 py-1.5 font-medium text-slate-700 whitespace-nowrap">{household.id}</td>
+                  <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{household.name}</td>
+                  <td className="px-3 py-1.5 text-right text-slate-500 whitespace-nowrap">{household.standpost}</td>
+                  <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">{household.meter}</td>
+                  <td className="px-3 py-1.5 text-right text-slate-500 whitespace-nowrap">{record.prev}</td>
+                  <td className="px-3 py-1.5 text-right text-slate-500 whitespace-nowrap">{record.curr}</td>
+                  <td className="px-3 py-1.5 text-right text-slate-500 whitespace-nowrap">{record.curr - record.prev}</td>
+                  <td className="px-3 py-1.5 text-right font-semibold text-slate-800 whitespace-nowrap">{peso(record.amt)}</td>
+                  <td className="px-3 py-1.5 text-left text-slate-700 whitespace-nowrap">
+                    {household.paymentStatus === "Paid"
+                      ? household.paymentMethod === "GCash" ? "GCash" : "Cash"
+                      : household.paymentStatus === "GCash Pending"
+                      ? "GCash"
+                      : "Pending"}
+                  </td>
+                  <td className="px-3 py-1.5 text-center whitespace-nowrap">
+                    {household.paymentStatus === "Paid" ? (
+                      <Badge tone="good">Paid</Badge>
+                    ) : household.paymentStatus === "GCash Pending" ? (
+                      <Badge tone="info">GCash Pending</Badge>
+                    ) : (
+                      <Badge tone="bad">Unpaid</Badge>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5 text-center whitespace-nowrap no-print">
+                    {household.paymentStatus === "GCash Pending" ? (
+                      <Btn
+                        variant="primary"
+                        onClick={() => {
+                          receiveGcashPayment(household.id);
+                        }}
+                      >
+                        Confirm GCash
+                      </Btn>
+                    ) : selectedPeriodKey && record.period === selectedPeriodKey && household.paymentStatus === "Unpaid" ? (
+                      <Btn variant="ghost" onClick={() => { markPaid(household.id); showToast(`${household.id} marked as paid`, "success"); }}>
+                        Mark paid
+                      </Btn>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={12} className="px-3 py-6 text-center text-slate-500">No records found for {selectedBillingMonth} {selectedBillingYear}.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-[11px] text-slate-500">
+        <div className="font-semibold text-slate-600 mb-0.5">Billing formula & rate reference</div>
+        CC CM² = TCCM² − PC CM²  |  Rate: ₱20.00 per CM²  |  Minimum billing: ₱200.00  |  1 CM² = 1,000 liters
+        <br />
+        CC CM² = Current Consumed CM²  |  TCCM² = Total Cumulative Meter Reading  |  PC CM² = Previous Consumed CM²
+      </div>
+    </>
+  );
+}
+
+export function AlertsPage({ alerts, filter, setFilter, selectedAlertId, setSelectedAlertId, resolveAlert }) {
+  const filters = ["All", "Unresolved", "High Flow", "Leak Detected", "No Data", "Resolved"];
+  const counts = {
+    All: alerts.length,
+    Unresolved: alerts.filter((a) => a.status === "Unresolved").length,
+    "High Flow": alerts.filter((a) => a.type === "High Flow").length,
+    "Leak Detected": alerts.filter((a) => a.type === "Leak Detected").length,
+    "No Data": alerts.filter((a) => a.type === "No Sensor Data").length,
+    Resolved: alerts.filter((a) => a.status === "Resolved").length,
+  };
+
+  const filtered = alerts.filter((a) => {
+    if (filter === "All") return true;
+    if (filter === "Unresolved") return a.status === "Unresolved";
+    if (filter === "Resolved") return a.status === "Resolved";
+    if (filter === "No Data") return a.type === "No Sensor Data";
+    return a.type === filter;
+  });
+
+  const selected = alerts.find((a) => a.id === selectedAlertId) || filtered[0];
+
+  return (
+    <>
+      <SectionHeader title="Abnormal Consumption Alerts" sub="Real-time detection of unusual water flow per household connection" />
+      <div className="flex gap-1.5 mb-4 flex-wrap">
+        {filters.map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition ${
+              filter === f ? "bg-[#1e3a5f] text-white border-[#1e3a5f]" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-3 flex-wrap mb-4">
+        <StatCard label="Total alerts (today)" value={counts.All} accent="border-t-slate-300" />
+        <StatCard label="High flow" value={counts["High Flow"]} tone="warn" accent="border-t-amber-400" />
+        <StatCard label="Leak detected" value={counts["Leak Detected"]} tone="bad" accent="border-t-rose-400" />
+        <StatCard label="No sensor data" value={counts["No Data"]} accent="border-t-slate-300" />
+      </div>
+
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mb-3">
+        <div className="px-4 py-2.5 text-[13px] font-semibold text-slate-700 border-b border-slate-100">Alert log — {dateStamp()}, {new Date().getFullYear()}</div>
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="text-slate-400 border-b border-slate-100">
+              <th className="text-left px-3 py-2 font-medium">Alert ID</th>
+              <th className="text-left px-3 py-2 font-medium">Household</th>
+              <th className="text-left px-3 py-2 font-medium">Resident name</th>
+              <th className="text-right px-3 py-2 font-medium">Standpost #</th>
+              <th className="text-left px-3 py-2 font-medium">Type</th>
+              <th className="text-right px-3 py-2 font-medium">Flow rate</th>
+              <th className="text-right px-3 py-2 font-medium">Threshold</th>
+              <th className="text-right px-3 py-2 font-medium">Time</th>
+              <th className="text-center px-3 py-2 font-medium">Status</th>
+              <th className="text-center px-3 py-2 font-medium">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((a, i) => (
+              <tr
+                key={a.id}
+                onClick={() => setSelectedAlertId(a.id)}
+                className={`cursor-pointer ${selected?.id === a.id ? "bg-sky-50" : i % 2 ? "bg-slate-50" : "bg-white"} hover:bg-sky-50`}
+              >
+                <td className="px-3 py-1.5 text-slate-500">{a.id}</td>
+                <td className="px-3 py-1.5 font-medium text-slate-700">{a.householdId}</td>
+                <td className="px-3 py-1.5 text-slate-600">{a.name}</td>
+                <td className="px-3 py-1.5 text-right text-slate-500">{a.standpost}</td>
+                <td className={`px-3 py-1.5 ${a.type === "Leak Detected" ? "text-rose-600" : a.type === "High Flow" ? "text-amber-600" : "text-slate-400"}`}>{a.type}</td>
+                <td className="px-3 py-1.5 text-right text-slate-500">{a.flowRate}</td>
+                <td className="px-3 py-1.5 text-right text-slate-400">{a.threshold}</td>
+                <td className="px-3 py-1.5 text-right text-slate-400">{a.time}</td>
+                <td className="px-3 py-1.5 text-center">
+                  {a.status === "Unresolved" ? <Badge tone="bad">Unresolved</Badge> : <Badge tone="good">Resolved</Badge>}
+                </td>
+                <td className="px-3 py-1.5 text-center">
+                  {a.status === "Unresolved" ? (
+                    <Btn variant="primary" onClick={(e) => { e.stopPropagation(); resolveAlert(a.id); }}>
+                      Resolve
+                    </Btn>
+                  ) : (
+                    <Btn onClick={(e) => { e.stopPropagation(); setSelectedAlertId(a.id); }}>View</Btn>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={10} className="text-center text-slate-400 py-6 text-xs">No alerts match this filter.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {selected && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-6 flex-wrap text-[12px]">
+          <div>
+            <div className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">Selected alert detail</div>
+            <div className="font-semibold text-slate-700">{selected.id} | {selected.householdId} | {selected.name} | Standpost #{selected.standpost}</div>
+          </div>
+          <div><span className="text-slate-400">Type</span><br /><span className="font-medium">{selected.type}</span></div>
+          <div><span className="text-slate-400">Flow rate</span><br /><span className="font-medium">{selected.flowRate}</span></div>
+          <div><span className="text-slate-400">Threshold</span><br /><span className="font-medium">{selected.threshold}</span></div>
+          <div><span className="text-slate-400">Status</span><br /><span className="font-medium">{selected.status}</span></div>
+          {selected.status === "Unresolved" && (
+            <Btn variant="primary" className="ml-auto" onClick={() => resolveAlert(selected.id)}>Mark as Resolved</Btn>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function HouseholdsPage({ households, showToast, onResetPassword, onAddHousehold }) {
+  const [searchTerm, setSearchTerm] = React.useState("");
+  const [expandedId, setExpandedId] = React.useState(null);
+  const [showAddModal, setShowAddModal] = React.useState(false);
+
+  const filtered = households.filter(
+    (h) =>
+      h.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      h.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(h.standpost).includes(searchTerm) ||
+      h.meter.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <>
+      <SectionHeader title="Household Records" sub="Connected households under the barangay water system" />
+
+      <div className="mb-4 flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[260px]">
+          <label className="block text-xs text-slate-500 mb-1.5">Search by household ID, resident, standpost, or meter #</label>
+          <input
+            type="text"
+            placeholder="e.g., HH-001, Juan dela Cruz, 25"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          />
+        </div>
+        <div className="text-xs text-slate-500">
+          {searchTerm ? `${filtered.length} of ${households.length} households` : `${households.length} total households`}
+        </div>
+        <Btn variant="primary" onClick={() => setShowAddModal(true)}>+ Add Household</Btn>
+      </div>
+
+      {showAddModal && (
+        <AddHouseholdModal
+          onAdd={onAddHousehold}
+          showToast={showToast}
+          onClose={() => setShowAddModal(false)}
+        />
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        {filtered.length > 0 ? (
+          filtered.map((h) => {
+            const isExpanded = expandedId === h.id;
+            return (
+              <div key={h.id} className="bg-white rounded-lg border border-slate-200 p-3.5">
+                <button
+                  className="w-full text-left"
+                  onClick={() => setExpandedId(isExpanded ? null : h.id)}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-semibold text-slate-800 text-sm">{h.name}</div>
+                    <div className="flex items-center gap-1.5">
+                      {h.flowType === "High flow" && <Badge tone="bad">High Flow</Badge>}
+                      <Badge tone="good">Active</Badge>
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-slate-500 space-y-1">
+                    <div>Household ID: <span className="text-slate-700 font-medium">{h.id}</span></div>
+                    <div>Standpost #: <span className="text-slate-700 font-medium">{h.standpost}</span></div>
+                    <div>Meter #: <span className="text-slate-700 font-medium">{h.meter}</span></div>
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-600 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>Current reading: <span className="font-semibold text-slate-800">{h.currCm3} CM³</span></div>
+                      <div>Previous reading: <span className="font-semibold text-slate-800">{h.prevCm3} CM³</span></div>
+                      <div>This cycle: <span className="font-semibold text-slate-800">{h.consumption} CM³</span></div>
+                      <div>Live flow: <span className="font-semibold text-slate-800">{h.lastFlow} L/min</span></div>
+                      <div>Amount due: <span className="font-semibold text-slate-800">{peso(h.amount)}</span></div>
+                      <div>Total due: <span className="font-semibold text-slate-800">{peso(h.totalDue)}</span></div>
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <span>
+                        Payment status:{" "}
+                        {h.paymentStatus === "Paid" ? (
+                          <Badge tone="good">Paid</Badge>
+                        ) : h.paymentStatus === "GCash Pending" ? (
+                          <Badge tone="info">GCash Pending</Badge>
+                        ) : (
+                          <Badge tone="bad">Unpaid</Badge>
+                        )}
+                      </span>
+                      <span>
+                        Account: {h.password ? (
+                          <span className="text-emerald-600 font-medium">Password set</span>
+                        ) : (
+                          <span className="text-amber-600 font-medium">Not yet activated</span>
+                        )}
+                      </span>
+                    </div>
+                    {h.password && (
+                      <div className="pt-1">
+                        <Btn
+                          variant="outline"
+                          onClick={() => {
+                            if (typeof onResetPassword === "function") {
+                              onResetPassword(h.id);
+                            } else if (typeof showToast === "function") {
+                              showToast(`${h.id} password reset — resident must set a new one on next login.`, "info");
+                            }
+                          }}
+                        >
+                          Reset password
+                        </Btn>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="col-span-2 bg-slate-50 border border-slate-200 rounded-lg p-6 text-center text-slate-500">
+            No households found matching "{searchTerm}".
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function AddHouseholdModal({ onAdd, showToast, onClose }) {
+  const [form, setForm] = React.useState({
+    name: "",
+    standpost: "",
+    meter: "",
+    address: "",
+    phone: "",
+    email: "",
+  });
+  const [error, setError] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+
+  function setField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+
+    if (!form.name.trim() || !form.standpost || !form.meter.trim()) {
+      setError("Full name, standpost #, and meter # are required.");
+      return;
+    }
+    const standpostNum = Number(form.standpost);
+    if (!Number.isFinite(standpostNum) || standpostNum <= 0) {
+      setError("Standpost # must be a positive number.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await onAdd({
+        name: form.name.trim(),
+        standpost: standpostNum,
+        meter: form.meter.trim(),
+        address: form.address.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        email: form.email.trim() || undefined,
+      });
+      if (!result || !result.success) {
+        setError((result && result.message) || "Could not add household.");
+        return;
+      }
+      onClose();
+    } catch (err) {
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="bg-[#1e3a5f] text-white px-5 py-4 flex items-center justify-between sticky top-0">
+          <div className="font-bold text-sm">Add Household</div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-lg leading-none">×</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-3">
+          <p className="text-[11px] text-slate-500 -mt-1 mb-1">
+            A household ID and standpost connection will be generated automatically.
+          </p>
+
+          {error && (
+            <div className="bg-rose-50 border border-rose-200 rounded-md px-3 py-2 text-[11px] text-rose-700">
+              {error}
+            </div>
+          )}
+
+          <div>
+            <label className="text-[11px] font-medium text-slate-600 block mb-1">
+              Full Name <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) => setField("name", e.target.value)}
+              className="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-400"
+              placeholder="e.g., Juan dela Cruz"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                Standpost # <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="number"
+                value={form.standpost}
+                onChange={(e) => setField("standpost", e.target.value)}
+                className="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-400"
+                placeholder="e.g., 25"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                Meter # <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.meter}
+                onChange={(e) => setField("meter", e.target.value)}
+                className="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-400"
+                placeholder="e.g., 158-SH-00099"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-slate-600 block mb-1">Address</label>
+            <input
+              type="text"
+              value={form.address}
+              onChange={(e) => setField("address", e.target.value)}
+              className="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-400"
+              placeholder="Purok, Kinamlutan, Butuan City"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-medium text-slate-600 block mb-1">Phone</label>
+              <input
+                type="text"
+                value={form.phone}
+                onChange={(e) => setField("phone", e.target.value)}
+                className="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-400"
+                placeholder="09XX XXX XXXX"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-slate-600 block mb-1">Email</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setField("email", e.target.value)}
+                className="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-sky-400"
+                placeholder="name@gmail.com"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Btn type="button" className="flex-1 justify-center" onClick={onClose}>Cancel</Btn>
+            <Btn
+              type="submit"
+              variant="primary"
+              className="flex-1 justify-center"
+              disabled={submitting}
+            >
+              {submitting ? "Adding…" : "Add Household"}
+            </Btn>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const RECORDS_MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function periodSortKey(period) {
+  const [month, year] = period.split(" ");
+  return Number(year) * 12 + RECORDS_MONTH_ORDER.indexOf(month);
+}
+
+export function RecordsPage({ households, showToast }) {
+  const [searchTerm, setSearchTerm] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState("All");
+
+  const allRecords = households
+    .flatMap((h) => h.history.map((rec) => ({ household: h, record: rec })))
+    .sort((a, b) => periodSortKey(b.record.period) - periodSortKey(a.record.period));
+
+  const filtered = allRecords.filter(({ household, record }) => {
+    const matchesSearch =
+      !searchTerm ||
+      household.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      household.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus =
+      statusFilter === "All" || (statusFilter === "Paid" ? record.paid : !record.paid);
+    return matchesSearch && matchesStatus;
+  });
+
+  const totalRecords = allRecords.length;
+  const paidCount = allRecords.filter(({ record }) => record.paid).length;
+  const unpaidCount = totalRecords - paidCount;
+  const totalCollected = allRecords
+    .filter(({ record }) => record.paid)
+    .reduce((sum, { record }) => sum + record.amt, 0);
+
+  function exportCsv() {
+    const header = ["Household", "Resident name", "Period", "Prev CM3", "Curr CM3", "Consumed", "Amount", "Status"];
+    const rows = filtered.map(({ household, record }) => [
+      household.id,
+      household.name,
+      record.period,
+      record.prev,
+      record.curr,
+      record.curr - record.prev,
+      record.amt,
+      record.paid ? "Paid" : "Unpaid",
+    ]);
+    const csv = [header, ...rows]
+      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "billing-records-archive.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (typeof showToast === "function") showToast("Records exported as CSV", "success");
+  }
+
+  return (
+    <>
+      <SectionHeader title="Records" sub="Historical consumption and billing archive" />
+
+      <div className="flex gap-3 flex-wrap mb-4">
+        <StatCard label="Total records" value={totalRecords} />
+        <StatCard label="Paid" value={paidCount} tone="good" />
+        <StatCard label="Unpaid" value={unpaidCount} tone="bad" />
+        <StatCard label="Total collected" value={peso(totalCollected)} tone="good" />
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[260px]">
+          <label className="block text-xs text-slate-500 mb-1.5">Search by household ID or resident name</label>
+          <input
+            type="text"
+            placeholder="e.g., HH-001, Juan dela Cruz"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          />
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          {["All", "Paid", "Unpaid"].map((status) => (
+            <button
+              key={status}
+              onClick={() => setStatusFilter(status)}
+              className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border transition ${
+                statusFilter === status
+                  ? status === "Paid"
+                    ? "bg-emerald-600 text-white border-emerald-600"
+                    : status === "Unpaid"
+                    ? "bg-rose-600 text-white border-rose-600"
+                    : "bg-slate-900 text-white border-slate-900"
+                  : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
+
+        <div className="ml-auto flex gap-2">
+          <Btn onClick={() => window.print()}>Export PDF</Btn>
+          <Btn onClick={exportCsv}>Export CSV</Btn>
+        </div>
+      </div>
+
+      <div className="text-xs text-slate-500 mb-2">
+        {searchTerm || statusFilter !== "All"
+          ? `Showing ${filtered.length} of ${totalRecords} records`
+          : `Showing all ${totalRecords} records`}
+      </div>
+
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="bg-[#1e3a5f] text-white">
+                <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Household</th>
+                <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Resident name</th>
+                <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Period</th>
+                <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Prev CM³</th>
+                <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Curr CM³</th>
+                <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Consumed</th>
+                <th className="text-right px-3 py-2 font-semibold whitespace-nowrap">Amount</th>
+                <th className="text-center px-3 py-2 font-semibold whitespace-nowrap">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length > 0 ? (
+                filtered.map(({ household, record }, i) => (
+                  <tr key={household.id + record.period} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                    <td className="px-3 py-1.5 font-medium text-slate-700 whitespace-nowrap">{household.id}</td>
+                    <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{household.name}</td>
+                    <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">{record.period}</td>
+                    <td className="px-3 py-1.5 text-right text-slate-500 whitespace-nowrap">{record.prev}</td>
+                    <td className="px-3 py-1.5 text-right text-slate-500 whitespace-nowrap">{record.curr}</td>
+                    <td className="px-3 py-1.5 text-right text-slate-500 whitespace-nowrap">{record.curr - record.prev}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold text-slate-800 whitespace-nowrap">{peso(record.amt)}</td>
+                    <td className="px-3 py-1.5 text-center whitespace-nowrap">
+                      {record.paid ? <Badge tone="good">Paid</Badge> : <Badge tone="bad">Unpaid</Badge>}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
+                    No records match this filter.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function SettingsPage({ showToast }) {
+  const [editing, setEditing] = React.useState(false);
+  const [rate, setRate] = React.useState(RATE_PER_CM3);
+  const [minBill, setMinBill] = React.useState(MIN_BILL);
+  const [threshold, setThreshold] = React.useState(50);
+  const [gateway, setGateway] = React.useState("GCash");
+
+  function handleSave() {
+    setEditing(false);
+    if (typeof showToast === "function") {
+      showToast("Settings updated for this session.", "success");
+    }
+  }
+
+  return (
+    <>
+      <SectionHeader title="Settings" sub="System configuration" />
+      <div className="bg-white rounded-lg border border-slate-200 p-5 max-w-md text-[12px] space-y-4">
+        <div className="flex items-center justify-between pb-1">
+          <span className="font-semibold text-slate-700 text-[13px]">Billing configuration</span>
+          <button
+            onClick={() => setEditing(!editing)}
+            className="text-[12px] text-sky-600 hover:text-sky-800 font-medium"
+          >
+            {editing ? "Cancel" : "Edit"}
+          </button>
+        </div>
+
+        <div className="flex justify-between items-center">
+          <span className="text-slate-500">Rate per CM³</span>
+          {editing ? (
+            <input
+              type="number"
+              value={rate}
+              onChange={(e) => setRate(Number(e.target.value))}
+              className="w-24 border border-slate-300 rounded-md px-2 py-1 text-right text-[12px] focus:outline-none focus:border-sky-400"
+            />
+          ) : (
+            <span className="font-medium">{peso(rate)}</span>
+          )}
+        </div>
+
+        <div className="flex justify-between items-center">
+          <span className="text-slate-500">Minimum billing</span>
+          {editing ? (
+            <input
+              type="number"
+              value={minBill}
+              onChange={(e) => setMinBill(Number(e.target.value))}
+              className="w-24 border border-slate-300 rounded-md px-2 py-1 text-right text-[12px] focus:outline-none focus:border-sky-400"
+            />
+          ) : (
+            <span className="font-medium">{peso(minBill)}</span>
+          )}
+        </div>
+
+        <div className="flex justify-between items-center">
+          <span className="text-slate-500">Current billing period</span>
+          <span className="font-medium">{BILLING_PERIOD}</span>
+        </div>
+
+        <div className="flex justify-between items-center">
+          <span className="text-slate-500">Alert threshold (flow)</span>
+          {editing ? (
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                value={threshold}
+                onChange={(e) => setThreshold(Number(e.target.value))}
+                className="w-20 border border-slate-300 rounded-md px-2 py-1 text-right text-[12px] focus:outline-none focus:border-sky-400"
+              />
+              <span className="text-slate-400">L/min</span>
+            </div>
+          ) : (
+            <span className="font-medium">{threshold} L/min</span>
+          )}
+        </div>
+
+        <div className="flex justify-between items-center">
+          <span className="text-slate-500">Payment gateway</span>
+          {editing ? (
+            <select
+              value={gateway}
+              onChange={(e) => setGateway(e.target.value)}
+              className="border border-slate-300 rounded-md px-2 py-1 text-[12px] focus:outline-none focus:border-sky-400"
+            >
+              <option value="GCash">GCash</option>
+              <option value="Maya">Maya</option>
+              <option value="Cash only">Cash only</option>
+            </select>
+          ) : (
+            <span className="font-medium">{gateway}</span>
+          )}
+        </div>
+
+        {editing ? (
+          <div className="pt-2 border-t border-slate-100">
+            <Btn variant="primary" onClick={handleSave}>Save Changes</Btn>
+          </div>
+        ) : (
+          <div className="text-[10px] text-slate-400 pt-2 border-t border-slate-100">
+            Changes apply to this session only and are not persisted to a backend in this prototype.
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+export function BillStatementsPage({ households }) {
+  const [searchTerm, setSearchTerm] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState("All");
+
+  const filtered = households.filter((h) => {
+    if (statusFilter !== "All" && h.paymentStatus !== statusFilter) return false;
+    return (
+      h.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      h.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
+
+  const printAllStatements = () => {
+    setSearchTerm("");
+    setStatusFilter("All");
+    window.requestAnimationFrame(() => window.print());
+  };
+
+  return (
+    <>
+      <SectionHeader title="Billing Statements" sub={`View and print resident bills — ${BILLING_PERIOD}`} />
+      
+      <div className="mb-4 flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[260px]">
+          <label className="block text-xs text-slate-500 mb-1.5">Search by household ID or resident name</label>
+          <input
+            type="text"
+            placeholder="e.g., HH-001, Juan Dela Cruz"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          />
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          {['All', 'Paid', 'Unpaid'].map((status) => (
+            <button
+              key={status}
+              onClick={() => setStatusFilter(status)}
+              className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border transition ${
+                statusFilter === status
+                  ? status === 'Paid'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : status === 'Unpaid'
+                    ? 'bg-rose-600 text-white border-rose-600'
+                    : 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
+
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Btn onClick={() => window.print()}>Print statements</Btn>
+          <Btn variant="secondary" onClick={printAllStatements}>Print all statements</Btn>
+        </div>
+      </div>
+
+      <div className="text-xs text-slate-500 mb-4">
+        {searchTerm || statusFilter !== "All"
+          ? `Showing ${filtered.length} ${statusFilter === "All" ? "household" : `${statusFilter.toLowerCase()} household`}${filtered.length !== 1 ? "s" : ""}`
+          : `Displaying all ${households.length} households`}
+      </div>
+
+      <div className="print-bills-grid">
+        {filtered.length > 0 ? (
+          chunk(filtered, 2).map((pair) => (
+            <div key={pair.map((h) => h.id).join("-")} className="print-bill-page">
+              {pair.map((household) => (
+                <div key={household.id} className="print-bill-item">
+                  <BillReplica me={household} paymentStamp={household.paymentStamp} />
+                </div>
+              ))}
+            </div>
+          ))
+        ) : (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-6 text-center text-slate-500">
+            No households found matching "{searchTerm}". Try searching by household ID or resident name.
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function chunk(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
