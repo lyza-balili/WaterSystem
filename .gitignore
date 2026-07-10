@@ -3,3 +3,7 @@ dist
 .DS_Store
 *.local
 .env
+
+# Transient SQLite write-ahead-log files (regenerated at runtime)
+*.db-wal
+*.db-shm
