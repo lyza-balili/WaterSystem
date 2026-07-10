@@ -92,10 +92,10 @@ export async function adminResetPassword({ email, code, newPassword }) {
 // Exported here so the prototype file can import them once USE_API
 // resident-login support is added.
 
-export async function residentLogin({ householdId, password, confirmPassword }) {
+export async function residentLogin({ householdId, password, confirmPassword, email, username }) {
   const data = await request("/resident/login", {
     method: "POST",
-    body: { householdId, password, confirmPassword },
+    body: { householdId, password, confirmPassword, email, username },
   });
   if (data.success && data.token) {
     setToken("resident", data.token);
@@ -199,6 +199,13 @@ export async function recordCash(billId, amount) {
   });
 }
 
+export async function recordUnpaid(billId) {
+  return request(`/bills/${billId}/mark-unpaid`, {
+    method: "POST",
+    auth: "admin",
+  });
+}
+
 export async function initiateGcash(billId) {
   return request(`/bills/${billId}/gcash/initiate`, {
     method: "POST",
@@ -236,6 +243,10 @@ export async function fetchAlerts() {
 
 export async function resolveAlertApi(alertId) {
   return request(`/alerts/${alertId}/resolve`, { method: "POST", auth: "admin" });
+}
+
+export async function unresolveAlertApi(alertId) {
+  return request(`/alerts/${alertId}/unresolve`, { method: "POST", auth: "admin" });
 }
 
 // ── Leak reports ─────────────────────────────────────────────
