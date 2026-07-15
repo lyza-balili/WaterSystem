@@ -4,6 +4,10 @@ dist
 *.local
 .env
 
-# Transient SQLite write-ahead-log files (regenerated at runtime)
+# Local SQLite database and its transient write-ahead-log files. The schema is
+# created on boot and the data is regenerable with `npm run seed` in /server,
+# so the .db is a local artifact rather than source -- and keeping it out of the
+# repo avoids publishing resident records and password hashes.
+*.db
 *.db-wal
 *.db-shm
