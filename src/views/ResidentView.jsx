@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { getConsumptionStatus } from "../data";
 import {
   LoginScreen,
@@ -73,6 +73,7 @@ export function ResidentView({
   useApi,
 }) {
   const me = households.find((h) => h.id === activeId) || households[0];
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   if (!residentAuthenticated || page === "login") {
     return (
@@ -88,11 +89,46 @@ export function ResidentView({
   }
 
   const status = getConsumptionStatus(me);
+  const currentLabel = NAV.find((i) => i.id === page)?.label || "Dashboard";
+
+  // On mobile, selecting a page should also close the slide-in drawer.
+  const goToPage = (id) => {
+    setPage(id);
+    setMobileNavOpen(false);
+  };
 
   return (
-    <div className="flex min-h-[680px]">
-      {/* ── Sidebar ── */}
-      <div className="w-52 bg-[#1e3a5f] text-white flex flex-col flex-shrink-0">
+    <div className="lg:flex min-h-screen">
+      {/* Mobile top bar (hidden on large screens) */}
+      <div className="lg:hidden sticky top-0 z-30 flex items-center gap-3 bg-[#1e3a5f] text-white px-4 py-3">
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Open menu"
+          className="w-9 h-9 flex items-center justify-center rounded-md hover:bg-white/10 transition"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <img src={logoImage} alt="logo" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+        <div className="font-semibold text-[13px] truncate">{currentLabel}</div>
+      </div>
+
+      {/* Backdrop when the mobile drawer is open */}
+      {mobileNavOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-40"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      {/* ── Sidebar — static on large screens, slide-in drawer on mobile ── */}
+      <div className={`
+        w-64 lg:w-52 bg-[#1e3a5f] text-white flex flex-col flex-shrink-0
+        fixed lg:static inset-y-0 left-0 z-50 lg:z-auto lg:min-h-screen
+        transform transition-transform duration-200
+        ${mobileNavOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0
+      `}>
         {/* Logo block */}
         <div className="flex items-center gap-2.5 px-4 py-4 border-b border-white/10">
           <img
@@ -100,11 +136,21 @@ export function ResidentView({
             alt="logo"
             className="w-10 h-10 rounded-full object-cover flex-shrink-0 shadow"
           />
-          <div className="leading-[1.25]">
+          <div className="leading-[1.25] flex-1 min-w-0">
             <div className="font-extrabold text-[10px] uppercase tracking-wide">Barangay</div>
             <div className="font-extrabold text-[10px] uppercase tracking-wide">Kinamlutan</div>
             <div className="font-extrabold text-[10px] uppercase tracking-wide">Water System</div>
           </div>
+          {/* Mobile-only close button for the drawer */}
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            aria-label="Close menu"
+            className="lg:hidden w-7 h-7 flex items-center justify-center rounded-md text-blue-200 hover:text-white hover:bg-white/10 transition flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
         {/* User card */}
@@ -134,7 +180,7 @@ export function ResidentView({
             return (
               <button
                 key={item.id}
-                onClick={() => setPage(item.id)}
+                onClick={() => goToPage(item.id)}
                 className={`w-full text-left px-4 py-2.5 text-[12px] flex items-center gap-2.5 transition border-l-2 ${
                   isActive
                     ? "bg-white/15 font-semibold border-sky-400 text-white"
@@ -186,7 +232,7 @@ export function ResidentView({
 
       {/* ── Main content ── */}
       <div className="flex-1 bg-slate-50 flex flex-col min-w-0">
-        <div className="p-6 flex-1 overflow-y-auto" style={{ maxHeight: "680px" }}>
+        <div className="p-4 sm:p-6 flex-1 lg:overflow-y-auto lg:max-h-screen">
           {page === "dashboard"     && <ResidentDashboard me={me} setPage={setPage} />}
           {page === "bills"         && <ResidentBills me={me} setPage={setPage} startGcashPayment={startGcashPayment} />}
           {page === "payments"      && <ResidentPayments me={me} startGcashPayment={startGcashPayment} />}

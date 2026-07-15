@@ -20,7 +20,10 @@ function verifyToken(token) {
   }
 }
 
-function authMiddleware(requiredRole) {
+// requiredRole   — "admin" | "resident" (the broad token audience)
+// allowedStaffRoles — optional list, e.g. ["officer"], restricting which admin
+//                     staff roles may pass. Omit to allow any admin.
+function authMiddleware(requiredRole, allowedStaffRoles) {
   return (req, res, next) => {
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : null;
@@ -33,6 +36,13 @@ function authMiddleware(requiredRole) {
     }
     if (requiredRole && payload.role !== requiredRole) {
       return res.status(403).json({ error: "You do not have access to this resource." });
+    }
+    if (
+      allowedStaffRoles &&
+      allowedStaffRoles.length &&
+      !allowedStaffRoles.includes(payload.staffRole)
+    ) {
+      return res.status(403).json({ error: "This action requires the Water Officer role." });
     }
     req.user = payload;
     next();

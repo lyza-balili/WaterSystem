@@ -37,8 +37,9 @@ router.post("/login", (req, res) => {
     return res.json({ success: false, message: "Incorrect password." });
   }
 
-  const token = signToken({ role: "admin", email: admin.email });
-  return res.json({ success: true, token, email: admin.email });
+  const staffRole = admin.role || "officer";
+  const token = signToken({ role: "admin", email: admin.email, staffRole });
+  return res.json({ success: true, token, email: admin.email, role: staffRole });
 });
 
 // POST /api/admin/forgot-password

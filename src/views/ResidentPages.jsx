@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Badge, StatCard, Btn } from "../ui/atoms";
 import { SectionHeader } from "../components/SectionHeader";
 import logoImage from "../assets/brgy.jpg";
@@ -6,8 +6,8 @@ import { BillReplica } from "../components/BillReplica";
 import { GcashBillingSection } from "../components/GcashBilling";
 import { ConsumptionStatusBanner } from "../components/ConsumptionStatusBanner";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
-import { peso, MIN_BILL, formatDueDate, dueDateForPeriod, getConsumptionStatus } from "../data";
-import { submitLeakReport, residentForgotPassword, residentResetPassword } from "../api";
+import { peso, MIN_BILL, formatDueDate, dueDateForPeriod, getConsumptionStatus, isOverdue, daysOverdue } from "../data";
+import { submitLeakReport, residentForgotPassword, residentResetPassword, fetchAnnouncements } from "../api";
 
 // ─────────────────────────────────────────────────────────────
 // LOGIN — matches WaterSystemPrototype's handleResidentLogin contract:
@@ -192,38 +192,38 @@ export function LoginScreen({
   }
 
   return (
-    <div className="min-h-[680px] flex items-center justify-center bg-slate-100">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4 py-8 sm:px-6 sm:py-12">
+      <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg">
         {/* Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition duration-300 hover:shadow-xl hover:border-slate-300 motion-safe:hover:-translate-y-1">
           {/* Header band */}
-          <div className="bg-[#1e3a5f] px-8 py-6 text-center">
+          <div className="bg-[#1e3a5f] px-6 py-7 sm:px-8 sm:py-9 text-center">
             <img
               src={logoImage}
               alt="Barangay Kinamlutan logo"
-              className="mx-auto mb-3 h-16 w-16 rounded-full object-cover shadow-lg border-2 border-white/20"
+              className="mx-auto mb-3 h-16 w-16 sm:h-20 sm:w-20 rounded-full object-cover shadow-lg border-2 border-white/20"
             />
-            <div className="font-extrabold text-white text-[15px] leading-tight">
+            <div className="font-extrabold text-white text-base sm:text-lg leading-tight">
               Barangay Kinamlutan
             </div>
-            <div className="font-semibold text-sky-300 text-[12px] mt-0.5">
+            <div className="font-semibold text-sky-300 text-xs sm:text-sm mt-0.5">
               Water Billing & Monitoring System
             </div>
           </div>
 
           {/* Form */}
-          <div className="px-8 py-6">
-            <div className="text-[13px] font-semibold text-slate-700 mb-1 text-center">
+          <div className="px-6 py-6 sm:px-8 sm:py-8">
+            <div className="text-sm sm:text-base font-semibold text-slate-700 mb-1 text-center">
               {isNewPassword ? "Resident Sign Up" : "Resident Sign In"}
             </div>
-            <div className="text-[11px] text-slate-400 mb-5 text-center">
+            <div className="text-xs sm:text-sm text-slate-400 mb-5 text-center">
               {isNewPassword
                 ? "Register your household using the control number on your water bill."
                 : "Enter your control number and password to continue."}
             </div>
 
             {info && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 mb-4 text-[11px] text-emerald-700">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 mb-4 text-xs sm:text-[13px] text-emerald-700">
                 {info}
               </div>
             )}
@@ -244,7 +244,7 @@ export function LoginScreen({
                     d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                   />
                 </svg>
-                <span className="text-[11px] text-rose-700">{error}</span>
+                <span className="text-xs sm:text-[13px] text-rose-700">{error}</span>
               </div>
             )}
 
@@ -252,7 +252,7 @@ export function LoginScreen({
             {isNewPassword && (
               <>
                 <div className="mb-3">
-                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                  <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                     Email Address
                   </label>
                   <div className="relative">
@@ -266,13 +266,13 @@ export function LoginScreen({
                       placeholder="you@example.com"
                       value={email}
                       onChange={(e) => { setEmail(e.target.value); setError(""); }}
-                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
                     />
                   </div>
                 </div>
 
                 <div className="mb-3">
-                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                  <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                     Preferred Username
                   </label>
                   <div className="relative">
@@ -286,7 +286,7 @@ export function LoginScreen({
                       placeholder="Choose a username"
                       value={username}
                       onChange={(e) => { setUsername(e.target.value); setError(""); }}
-                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
                     />
                   </div>
                 </div>
@@ -295,7 +295,7 @@ export function LoginScreen({
 
             {/* Control Number (household ID from the bill) */}
             <div className="mb-3">
-              <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+              <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                 Control Number
               </label>
               <div className="relative">
@@ -310,11 +310,11 @@ export function LoginScreen({
                   value={controlNumber}
                   onChange={(e) => handleControlChange(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                  className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
                 />
               </div>
               {selected && (
-                <div className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1">
+                <div className="text-xs sm:text-[13px] text-emerald-600 mt-1 flex items-center gap-1">
                   <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
@@ -325,7 +325,7 @@ export function LoginScreen({
 
             {/* Password */}
             <div className={isNewPassword ? "mb-3" : "mb-5"}>
-              <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+              <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                 {isNewPassword ? "Create Password" : "Password"}
               </label>
               <div className="relative">
@@ -353,7 +353,7 @@ export function LoginScreen({
                     setError("");
                   }}
                   onKeyDown={handleKeyDown}
-                  className="w-full border border-slate-300 rounded-lg pl-9 pr-10 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                  className="w-full border border-slate-300 rounded-lg pl-9 pr-10 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
                 />
                 <button
                   type="button"
@@ -397,7 +397,7 @@ export function LoginScreen({
                       ) : (
                         <div className="w-3.5 h-3.5 rounded-full border border-slate-300 flex-shrink-0" />
                       )}
-                      <span className={`text-[11px] ${check.met ? "text-emerald-600" : "text-slate-400"}`}>
+                      <span className={`text-xs sm:text-[13px] ${check.met ? "text-emerald-600" : "text-slate-400"}`}>
                         {check.label}
                       </span>
                     </div>
@@ -409,7 +409,7 @@ export function LoginScreen({
                   <button
                     type="button"
                     onClick={() => { setError(""); setInfo(""); setMode("forgot"); }}
-                    className="text-[11px] text-sky-600 hover:text-sky-800 font-medium"
+                    className="text-xs sm:text-[13px] text-sky-600 hover:text-sky-800 font-medium"
                   >
                     Forgot password?
                   </button>
@@ -420,7 +420,7 @@ export function LoginScreen({
             {/* Confirm password — only for first-time setup */}
             {isNewPassword && (
               <div className="mb-5">
-                <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                   Confirm Password
                 </label>
                 <div className="relative">
@@ -448,7 +448,7 @@ export function LoginScreen({
                       setError("");
                     }}
                     onKeyDown={handleKeyDown}
-                    className="w-full border border-slate-300 rounded-lg pl-9 pr-10 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                    className="w-full border border-slate-300 rounded-lg pl-9 pr-10 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
                   />
                   <button
                     type="button"
@@ -484,7 +484,7 @@ export function LoginScreen({
             <button
               onClick={handleLogin}
               disabled={submitting || googleSubmitting}
-              className={`w-full text-white text-[13px] font-semibold py-2.5 rounded-lg transition active:scale-[0.98] ${
+              className={`w-full text-white text-sm sm:text-base font-semibold py-2.5 sm:py-3 rounded-lg transition active:scale-[0.98] ${
                 submitting || googleSubmitting
                   ? "bg-slate-400 cursor-not-allowed"
                   : "bg-[#1e3a5f] hover:bg-[#16304f]"
@@ -501,7 +501,7 @@ export function LoginScreen({
               <button
                 type="button"
                 onClick={toggleCreateMode}
-                className="text-[11px] text-sky-600 hover:text-sky-800 font-medium inline-flex items-center gap-1"
+                className="text-xs sm:text-[13px] text-sky-600 hover:text-sky-800 font-medium inline-flex items-center gap-1"
               >
                 {isNewPassword ? "Already have an account? Sign in instead" : "New here? Create an account"}
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -516,7 +516,7 @@ export function LoginScreen({
                 {/* Divider */}
                 <div className="flex items-center gap-3 my-4">
                   <div className="flex-1 h-px bg-slate-200" />
-                  <span className="text-[11px] text-slate-400 font-medium">
+                  <span className="text-xs sm:text-[13px] text-slate-400 font-medium">
                     {googleLinked ? "or sign in with" : "or link & sign in with"}
                   </span>
                   <div className="flex-1 h-px bg-slate-200" />
@@ -524,7 +524,7 @@ export function LoginScreen({
 
                 {/* Google button */}
                 {googleSubmitting ? (
-                  <div className="flex items-center justify-center gap-2 py-2 text-[12px] text-slate-500">
+                  <div className="flex items-center justify-center gap-2 py-2 text-xs sm:text-sm text-slate-500">
                     <div className="w-4 h-4 border-2 border-slate-300 border-t-sky-600 rounded-full animate-spin" />
                     Verifying with Google…
                   </div>
@@ -538,7 +538,7 @@ export function LoginScreen({
                 )}
 
                 {/* Contextual hint */}
-                <div className="text-[10px] text-slate-400 text-center mt-2">
+                <div className="text-[10px] sm:text-xs text-slate-400 text-center mt-2">
                   {googleLinked
                     ? `Linked to ${selected.googleEmail || "a Google account"}`
                     : "Signing in with Google will link it to this household."}
@@ -549,10 +549,10 @@ export function LoginScreen({
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-4 text-[11px] text-slate-400">
+        <div className="text-center mt-4 text-xs sm:text-[13px] text-slate-400">
           Barangay Kinamlutan, Butuan City · ZIP 8600
         </div>
-        <div className="text-center mt-2 text-[11px] text-slate-500">
+        <div className="text-center mt-2 text-xs sm:text-[13px] text-slate-500">
           Barangay staff?{" "}
           <a href="/admin" className="text-sky-600 hover:text-sky-800 font-medium">
             Go to the admin portal
@@ -645,35 +645,35 @@ function ResidentForgotPasswordScreen({ households, initialHouseholdId, onDone, 
   }
 
   return (
-    <div className="min-h-[680px] flex items-center justify-center bg-slate-100">
-      <div className="w-full max-w-sm">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="bg-[#1e3a5f] px-8 py-6 text-center">
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4 py-8 sm:px-6 sm:py-12">
+      <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition duration-300 hover:shadow-xl hover:border-slate-300 motion-safe:hover:-translate-y-1">
+          <div className="bg-[#1e3a5f] px-6 py-7 sm:px-8 sm:py-9 text-center">
             <img
               src={logoImage}
               alt="Barangay Kinamlutan logo"
-              className="mx-auto mb-3 h-16 w-16 rounded-full object-cover shadow-lg border-2 border-white/20"
+              className="mx-auto mb-3 h-16 w-16 sm:h-20 sm:w-20 rounded-full object-cover shadow-lg border-2 border-white/20"
             />
-            <div className="font-extrabold text-white text-[15px] leading-tight">
+            <div className="font-extrabold text-white text-base sm:text-lg leading-tight">
               Barangay Kinamlutan
             </div>
-            <div className="font-semibold text-sky-300 text-[12px] mt-0.5">
+            <div className="font-semibold text-sky-300 text-xs sm:text-sm mt-0.5">
               Water Billing & Monitoring System
             </div>
           </div>
 
-          <div className="px-8 py-6">
-            <div className="text-[13px] font-semibold text-slate-700 mb-1 text-center">
+          <div className="px-6 py-6 sm:px-8 sm:py-8">
+            <div className="text-sm sm:text-base font-semibold text-slate-700 mb-1 text-center">
               Reset Password
             </div>
-            <div className="text-[11px] text-slate-400 mb-5 text-center">
+            <div className="text-xs sm:text-sm text-slate-400 mb-5 text-center">
               {resetCode
                 ? "Enter the reset code and choose a new password."
                 : "Select your household to get a reset code."}
             </div>
 
             {error && (
-              <div className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2.5 mb-4 text-[11px] text-rose-700">
+              <div className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2.5 mb-4 text-xs sm:text-[13px] text-rose-700">
                 {error}
               </div>
             )}
@@ -681,7 +681,7 @@ function ResidentForgotPasswordScreen({ households, initialHouseholdId, onDone, 
             {!resetCode ? (
               <form onSubmit={handleRequestCode}>
                 <div className="mb-5">
-                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                  <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                     Household / Standpost
                   </label>
                   <div className="relative">
@@ -698,7 +698,7 @@ function ResidentForgotPasswordScreen({ households, initialHouseholdId, onDone, 
                     <select
                       value={householdId}
                       onChange={(e) => setHouseholdId(e.target.value)}
-                      className="w-full appearance-none border border-slate-300 rounded-lg pl-9 pr-8 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition bg-white"
+                      className="w-full appearance-none border border-slate-300 rounded-lg pl-9 pr-8 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition bg-white"
                     >
                       {households.map((h) => (
                         <option key={h.id} value={h.id}>
@@ -716,7 +716,7 @@ function ResidentForgotPasswordScreen({ households, initialHouseholdId, onDone, 
                 <button
                   type="submit"
                   disabled={submitting}
-                  className={`w-full text-white text-[13px] font-semibold py-2.5 rounded-lg transition active:scale-[0.98] ${
+                  className={`w-full text-white text-sm sm:text-base font-semibold py-2.5 sm:py-3 rounded-lg transition active:scale-[0.98] ${
                     submitting ? "bg-slate-400 cursor-not-allowed" : "bg-[#1e3a5f] hover:bg-[#16304f]"
                   }`}
                 >
@@ -725,32 +725,32 @@ function ResidentForgotPasswordScreen({ households, initialHouseholdId, onDone, 
               </form>
             ) : (
               <>
-                <div className="bg-sky-50 border border-sky-200 rounded-lg px-3 py-2.5 mb-4 text-[11px] text-sky-800">
+                <div className="bg-sky-50 border border-sky-200 rounded-lg px-3 py-2.5 mb-4 text-xs sm:text-[13px] text-sky-800">
                   <div className="font-semibold mb-1">
                     No email service is configured, so here's your reset code:
                   </div>
                   <div className="text-2xl font-mono font-bold tracking-widest text-center py-1 text-slate-800">
                     {resetCode}
                   </div>
-                  <div className="text-[11px] text-sky-600 text-center">
+                  <div className="text-xs sm:text-[13px] text-sky-600 text-center">
                     Valid for {expiresInMinutes} minutes.
                   </div>
                 </div>
 
                 <form onSubmit={handleResetPassword}>
                   <div className="mb-3">
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                    <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                       Reset Code
                     </label>
                     <input
                       type="text"
                       value={codeInput}
                       onChange={(e) => { setCodeInput(e.target.value); setError(""); }}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-[13px] font-mono tracking-widest focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 sm:py-3 text-base font-mono tracking-widest focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition"
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                    <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                       New Password
                     </label>
                     <div className="relative">
@@ -758,7 +758,7 @@ function ResidentForgotPasswordScreen({ households, initialHouseholdId, onDone, 
                         type={showNewPassword ? "text" : "password"}
                         value={newPassword}
                         onChange={(e) => { setNewPassword(e.target.value); setError(""); }}
-                        className="w-full border border-slate-300 rounded-lg px-3 pr-10 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                        className="w-full border border-slate-300 rounded-lg px-3 pr-10 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
                         placeholder="Create a strong password"
                       />
                       <button
@@ -778,26 +778,26 @@ function ResidentForgotPasswordScreen({ households, initialHouseholdId, onDone, 
                         )}
                       </button>
                     </div>
-                    <div className="text-[10px] text-slate-400 mt-1 leading-snug">
+                    <div className="text-[10px] sm:text-xs text-slate-400 mt-1 leading-snug">
                       At least 8 characters, with uppercase, lowercase, a number, and a symbol.
                     </div>
                   </div>
                   <div className="mb-5">
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                    <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                       Confirm New Password
                     </label>
                     <input
                       type="password"
                       value={confirmPassword}
                       onChange={(e) => { setConfirmPassword(e.target.value); setError(""); }}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition"
                       placeholder="Re-enter your password"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className={`w-full text-white text-[13px] font-semibold py-2.5 rounded-lg transition active:scale-[0.98] ${
+                    className={`w-full text-white text-sm sm:text-base font-semibold py-2.5 sm:py-3 rounded-lg transition active:scale-[0.98] ${
                       submitting ? "bg-slate-400 cursor-not-allowed" : "bg-[#1e3a5f] hover:bg-[#16304f]"
                     }`}
                   >
@@ -811,7 +811,7 @@ function ResidentForgotPasswordScreen({ households, initialHouseholdId, onDone, 
               <button
                 type="button"
                 onClick={onCancel}
-                className="text-[11px] text-slate-500 hover:text-slate-700 font-medium"
+                className="text-xs sm:text-[13px] text-slate-500 hover:text-slate-700 font-medium"
               >
                 ← Back to sign in
               </button>
@@ -819,7 +819,7 @@ function ResidentForgotPasswordScreen({ households, initialHouseholdId, onDone, 
           </div>
         </div>
 
-        <div className="text-center mt-4 text-[11px] text-slate-400">
+        <div className="text-center mt-4 text-xs sm:text-[13px] text-slate-400">
           Barangay Kinamlutan, Butuan City · ZIP 8600
         </div>
       </div>
@@ -856,7 +856,7 @@ export function ResidentDashboard({ me, setPage }) {
       </div>
 
       {/* Bar chart */}
-      <div className="bg-white rounded-lg border border-slate-200 p-4 mb-4">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 p-4 mb-4">
         <div className="font-semibold text-[13px] text-slate-700 mb-3">
           Monthly consumption (CM³)
         </div>
@@ -887,10 +887,10 @@ export function ResidentDashboard({ me, setPage }) {
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         <button
           onClick={() => setPage("bills")}
-          className="bg-white rounded-lg border border-slate-200 px-4 py-3 text-left hover:border-sky-400 hover:shadow-sm transition group"
+          className="card-hover bg-white rounded-lg border border-slate-200 px-4 py-3 text-left hover:border-sky-400 hover:shadow-sm transition group"
         >
           <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center mb-2 group-hover:bg-sky-100 transition">
             <svg className="w-4 h-4 text-sky-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -902,7 +902,7 @@ export function ResidentDashboard({ me, setPage }) {
         </button>
         <button
           onClick={() => setPage("payments")}
-          className="bg-white rounded-lg border border-slate-200 px-4 py-3 text-left hover:border-sky-400 hover:shadow-sm transition group"
+          className="card-hover bg-white rounded-lg border border-slate-200 px-4 py-3 text-left hover:border-sky-400 hover:shadow-sm transition group"
         >
           <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center mb-2 group-hover:bg-emerald-100 transition">
             <svg className="w-4 h-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -914,7 +914,7 @@ export function ResidentDashboard({ me, setPage }) {
         </button>
         <button
           onClick={() => setPage("leak")}
-          className="bg-white rounded-lg border border-slate-200 px-4 py-3 text-left hover:border-rose-400 hover:shadow-sm transition group"
+          className="card-hover bg-white rounded-lg border border-slate-200 px-4 py-3 text-left hover:border-rose-400 hover:shadow-sm transition group"
         >
           <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center mb-2 group-hover:bg-rose-100 transition">
             <svg className="w-4 h-4 text-rose-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -927,7 +927,7 @@ export function ResidentDashboard({ me, setPage }) {
       </div>
 
       {/* Billing history table */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className="px-4 py-2.5 text-[13px] font-semibold text-slate-700 border-b border-slate-100 flex items-center justify-between">
           Billing history
           <button
@@ -937,7 +937,8 @@ export function ResidentDashboard({ me, setPage }) {
             View all →
           </button>
         </div>
-        <table className="w-full text-[12px]">
+        <div className="overflow-x-auto">
+        <table className="w-full text-[12px] min-w-[460px]">
           <thead>
             <tr className="text-slate-400 border-b border-slate-100">
               <th className="text-left px-3 py-2 font-medium">Period</th>
@@ -973,6 +974,7 @@ export function ResidentDashboard({ me, setPage }) {
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </>
   );
@@ -1033,7 +1035,7 @@ export function ResidentBills({ me, setPage, startGcashPayment }) {
       <div className="flex gap-4">
         {/* ── Left: period selector ── */}
         <div className="w-64 flex-shrink-0 flex flex-col gap-3">
-          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100">
               <div className="text-[13px] font-semibold text-slate-700">Select Billing Period</div>
             </div>
@@ -1103,7 +1105,7 @@ export function ResidentBills({ me, setPage, startGcashPayment }) {
           </div>
 
           {/* Need help card */}
-          <div className="bg-white rounded-lg border border-slate-200 px-4 py-3 flex gap-2">
+          <div className="card-hover bg-white rounded-lg border border-slate-200 px-4 py-3 flex gap-2">
             <svg
               className="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5"
               fill="none"
@@ -1230,14 +1232,19 @@ export function ResidentPayments({ me, startGcashPayment }) {
         <p className="text-xs text-slate-500 mt-0.5">All your payment records and pay your current bill</p>
       </div>
 
-      {/* Pay now banner if unpaid */}
+      {/* Pay now banner if unpaid — turns red once the bill is past due */}
       {me.paymentStatus === "Unpaid" && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
+        <div className={`rounded-lg px-4 py-3 mb-4 flex items-center justify-between border ${isOverdue(me) ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
           <div>
-            <div className="text-[13px] font-semibold text-amber-800">Outstanding balance</div>
-            <div className="text-xs text-amber-700 mt-0.5">
+            <div className={`text-[13px] font-semibold ${isOverdue(me) ? "text-red-800" : "text-amber-800"}`}>
+              {isOverdue(me)
+                ? `Overdue — ${daysOverdue(me.dueDate, me.paymentStatus)} day${daysOverdue(me.dueDate, me.paymentStatus) === 1 ? "" : "s"} past due`
+                : "Outstanding balance"}
+            </div>
+            <div className={`text-xs mt-0.5 ${isOverdue(me) ? "text-red-700" : "text-amber-700"}`}>
               You have an unpaid bill of{" "}
-              <span className="font-bold">{peso(me.totalDue)}</span> due this period.
+              <span className="font-bold">{peso(me.totalDue)}</span>
+              {isOverdue(me) ? " that is now past its due date." : " due this period."}
             </div>
           </div>
           <button
@@ -1272,11 +1279,12 @@ export function ResidentPayments({ me, startGcashPayment }) {
       </div>
 
       {/* Payment history table */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className="px-4 py-2.5 text-[13px] font-semibold text-slate-700 border-b border-slate-100">
           Transaction History
         </div>
-        <table className="w-full text-[12px]">
+        <div className="overflow-x-auto">
+        <table className="w-full text-[12px] min-w-[380px]">
           <thead>
             <tr className="text-slate-400 border-b border-slate-100">
               <th className="text-left px-3 py-2 font-medium">Period</th>
@@ -1323,6 +1331,7 @@ export function ResidentPayments({ me, startGcashPayment }) {
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </>
   );
@@ -1381,7 +1390,7 @@ export function ResidentProfile({ me, onUpdateProfile }) {
       )}
 
       {/* Account info card */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mb-4">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden mb-4">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
           <div className="text-[13px] font-semibold text-slate-700">Account Details</div>
           <button
@@ -1449,7 +1458,7 @@ export function ResidentProfile({ me, onUpdateProfile }) {
       </div>
 
       {/* Meter info card */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100">
           <div className="text-[13px] font-semibold text-slate-700">Meter & Connection Info</div>
         </div>
@@ -1511,7 +1520,7 @@ export function ResidentConsumption({ me }) {
       )}
 
       {/* Bar chart */}
-      <div className="bg-white rounded-lg border border-slate-200 p-4 mb-4">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 p-4 mb-4">
         <div className="font-semibold text-[13px] text-slate-700 mb-3">
           Consumption history (CM³)
         </div>
@@ -1542,11 +1551,12 @@ export function ResidentConsumption({ me }) {
       </div>
 
       {/* Detailed history table */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className="px-4 py-2.5 text-[13px] font-semibold text-slate-700 border-b border-slate-100">
           Monthly Breakdown
         </div>
-        <table className="w-full text-[12px]">
+        <div className="overflow-x-auto">
+        <table className="w-full text-[12px] min-w-[460px]">
           <thead>
             <tr className="text-slate-400 border-b border-slate-100">
               <th className="text-left px-3 py-2 font-medium">Period</th>
@@ -1582,6 +1592,7 @@ export function ResidentConsumption({ me }) {
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </>
   );
@@ -1629,8 +1640,30 @@ const ANNOUNCEMENTS = [
   },
 ];
 
+// Fallback used only if the backend can't be reached — keeps the page useful
+// offline. Normally the list comes live from GET /api/announcements.
+const FALLBACK_ANNOUNCEMENTS = ANNOUNCEMENTS;
+
+function formatAnnDate(value) {
+  if (!value) return "";
+  // API sends "YYYY-MM-DD"; anchor to local midnight so the day doesn't shift.
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(value + "T00:00:00") : new Date(value);
+  return isNaN(d) ? value : d.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+}
+
 export function ResidentAnnouncements() {
   const [expanded, setExpanded] = useState(null);
+  const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    fetchAnnouncements()
+      .then((data) => { if (active) setList(Array.isArray(data) ? data : []); })
+      .catch(() => { if (active) setList(FALLBACK_ANNOUNCEMENTS); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   const typeStyles = {
     info: {
@@ -1662,9 +1695,16 @@ export function ResidentAnnouncements() {
         </p>
       </div>
 
+      {loading ? (
+        <div className="py-10 text-center text-xs text-slate-400">Loading announcements…</div>
+      ) : list.length === 0 ? (
+        <div className="card-hover bg-white rounded-lg border border-slate-200 py-10 text-center text-xs text-slate-400">
+          No announcements at the moment.
+        </div>
+      ) : (
       <div className="space-y-3">
-        {ANNOUNCEMENTS.map((ann) => {
-          const style = typeStyles[ann.type];
+        {list.map((ann) => {
+          const style = typeStyles[ann.type] || typeStyles.info;
           const isOpen = expanded === ann.id;
           return (
             <div
@@ -1705,10 +1745,12 @@ export function ResidentAnnouncements() {
                     </svg>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${style.badge}`}>
-                      {ann.tag}
-                    </span>
-                    <span className="text-[10px] text-slate-400">{ann.date}</span>
+                    {ann.tag && (
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${style.badge}`}>
+                        {ann.tag}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-slate-400">{formatAnnDate(ann.date)}</span>
                   </div>
                 </div>
               </button>
@@ -1721,6 +1763,7 @@ export function ResidentAnnouncements() {
           );
         })}
       </div>
+      )}
     </>
   );
 }
@@ -1832,7 +1875,7 @@ export function ResidentReportLeak({ me, useApi }) {
         );
       })()}
 
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden max-w-lg">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden max-w-lg">
         <div className="px-4 py-3 border-b border-slate-100">
           <div className="text-[13px] font-semibold text-slate-700">Leak Report Form</div>
           <div className="text-[11px] text-slate-500 mt-0.5">
@@ -2004,7 +2047,7 @@ export function HelpPage() {
       </div>
 
       {/* FAQ accordion */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden divide-y divide-slate-100">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden divide-y divide-slate-100">
         <div className="px-4 py-3 text-[13px] font-semibold text-slate-700 bg-slate-50">
           Frequently Asked Questions
         </div>
