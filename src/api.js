@@ -65,7 +65,7 @@ export async function adminLogin(email, password) {
     throw new Error(data.message || "Login failed.");
   }
   setToken("admin", data.token);
-  return { email: data.email };
+  return { email: data.email, role: data.role || "officer" };
 }
 
 export function adminLogout() {
@@ -257,4 +257,31 @@ export async function submitLeakReport({ location, description, severity, contac
     body: { location, description, severity, contactBack },
     auth: "resident",
   });
+}
+
+// ── Announcements ────────────────────────────────────────────
+// GET is public (residents read it); create/update/delete require an
+// admin token with the Water Officer role (enforced server-side).
+
+export async function fetchAnnouncements() {
+  return request("/announcements");
+}
+
+export async function createAnnouncement(payload) {
+  return request("/announcements", { method: "POST", body: payload, auth: "admin" });
+}
+
+export async function updateAnnouncement(id, payload) {
+  return request(`/announcements/${id}`, { method: "PUT", body: payload, auth: "admin" });
+}
+
+export async function deleteAnnouncement(id) {
+  return request(`/announcements/${id}`, { method: "DELETE", auth: "admin" });
+}
+
+// ── Audit log ────────────────────────────────────────────────
+// Water Officer only (enforced server-side).
+
+export async function fetchAuditLog(limit = 200) {
+  return request(`/audit?limit=${limit}`, { auth: "admin" });
 }

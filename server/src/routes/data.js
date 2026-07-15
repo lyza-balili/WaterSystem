@@ -1,6 +1,7 @@
 const express = require("express");
 const { db } = require("../db/database");
 const { authMiddleware } = require("../utils/auth");
+const { recordAudit } = require("../utils/audit");
 
 const router = express.Router();
 
@@ -49,7 +50,7 @@ function nextHouseholdId() {
 }
 
 // POST /api/residents  (admin only) — connect a new household
-router.post("/residents", authMiddleware("admin"), (req, res) => {
+router.post("/residents", authMiddleware("admin", ["officer"]), (req, res) => {
   const { name, standpost, meter, address, phone, email, dateConnected } = req.body || {};
 
   if (!name || !standpost || !meter) {
@@ -71,6 +72,7 @@ router.post("/residents", authMiddleware("admin"), (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, date('now')))`
   ).run(id, name, standpostNum, meter, address || null, phone || null, email || null, dateConnected || null);
 
+  recordAudit(req, "household.create", id, `Connected household ${id} — ${name}`);
   res.json({ success: true, id });
 });
 
@@ -97,7 +99,7 @@ router.patch("/residents/:id", authMiddleware("resident"), (req, res) => {
 
 // POST /api/residents/:id/reset-password  (admin only) — clears the resident's
 // password so they get the "create a new password" flow on next login.
-router.post("/residents/:id/reset-password", authMiddleware("admin"), (req, res) => {
+router.post("/residents/:id/reset-password", authMiddleware("admin", ["officer"]), (req, res) => {
   const household = db.prepare("SELECT id FROM households WHERE id = ?").get(req.params.id);
   if (!household) return res.status(404).json({ error: "Household not found." });
 
@@ -105,6 +107,7 @@ router.post("/residents/:id/reset-password", authMiddleware("admin"), (req, res)
     "UPDATE resident_accounts SET password_hash = NULL, updated_at = datetime('now') WHERE household_id = ?"
   ).run(req.params.id);
 
+  recordAudit(req, "resident.reset_password", req.params.id, `Reset login password for ${req.params.id}`);
   res.json({ success: true });
 });
 
@@ -177,7 +180,7 @@ function detectAbnormalConsumption(householdId, consumption, priorBills) {
 // POST /api/bills/generate  (admin only) — generate one bill per household for
 // a given period, from each household's latest reading vs. their latest bill.
 // Households that already have a bill for this period are skipped (idempotent).
-router.post("/bills/generate", authMiddleware("admin"), (req, res) => {
+router.post("/bills/generate", authMiddleware("admin", ["officer"]), (req, res) => {
   const { period } = req.body || {};
   if (!period || !dueDateForPeriod(period)) {
     return res.status(400).json({ error: "A valid period (e.g. 'Jun 2026') is required." });
@@ -227,6 +230,7 @@ router.post("/bills/generate", authMiddleware("admin"), (req, res) => {
   });
   tx();
 
+  recordAudit(req, "bill.generate", period, `Generated ${created} bill(s) for ${period}${skipped ? `, skipped ${skipped} already billed` : ""}`);
   res.json({ success: true, period, created, skipped });
 });
 
@@ -259,6 +263,7 @@ router.post("/bills/:id/mark-paid", authMiddleware("admin"), (req, res) => {
      WHERE id = ?`
   ).run(method, req.params.id);
 
+  recordAudit(req, "bill.mark_paid", bill.household_id, `Marked ${bill.period} bill Paid (${method}) for ${bill.household_id}`);
   res.json({ success: true });
 });
 
@@ -272,6 +277,7 @@ router.post("/bills/:id/mark-unpaid", authMiddleware("admin"), (req, res) => {
      WHERE id = ?`
   ).run(req.params.id);
 
+  recordAudit(req, "bill.mark_unpaid", bill.household_id, `Reverted ${bill.period} bill to Unpaid for ${bill.household_id}`);
   res.json({ success: true });
 });
 
@@ -306,6 +312,7 @@ router.post("/bills/:id/gcash/confirm", authMiddleware("admin"), (req, res) => {
     `UPDATE bills SET payment_status = 'Paid', payment_date = datetime('now') WHERE id = ?`
   ).run(req.params.id);
 
+  recordAudit(req, "bill.gcash_confirm", bill.household_id, `Confirmed GCash payment for ${bill.household_id} (${bill.period})`);
   res.json({ success: true });
 });
 
@@ -408,20 +415,22 @@ router.get("/alerts", (req, res) => {
   res.json(rows);
 });
 
-router.post("/alerts/:id/resolve", authMiddleware("admin"), (req, res) => {
+router.post("/alerts/:id/resolve", authMiddleware("admin", ["officer"]), (req, res) => {
   const result = db
     .prepare("UPDATE alerts SET status = 'Resolved' WHERE id = ?")
     .run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: "Alert not found." });
+  recordAudit(req, "alert.resolve", req.params.id, `Resolved alert ${req.params.id}`);
   res.json({ success: true });
 });
 
 // Undo an accidental resolve — moves an alert back to Unresolved.
-router.post("/alerts/:id/unresolve", authMiddleware("admin"), (req, res) => {
+router.post("/alerts/:id/unresolve", authMiddleware("admin", ["officer"]), (req, res) => {
   const result = db
     .prepare("UPDATE alerts SET status = 'Unresolved' WHERE id = ?")
     .run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: "Alert not found." });
+  recordAudit(req, "alert.unresolve", req.params.id, `Reopened alert ${req.params.id}`);
   res.json({ success: true });
 });
 
@@ -443,7 +452,7 @@ router.post("/leak-reports", authMiddleware("resident"), (req, res) => {
   res.json({ success: true, id });
 });
 
-router.get("/leak-reports", authMiddleware("admin"), (req, res) => {
+router.get("/leak-reports", authMiddleware("admin", ["officer"]), (req, res) => {
   const rows = db
     .prepare(
       `SELECT lr.*, h.name, h.standpost

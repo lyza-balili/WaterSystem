@@ -1,17 +1,95 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Badge, StatCard, Btn } from "../ui/atoms";
 import { SectionHeader } from "../components/SectionHeader";
 import { BillReplica } from "../components/BillReplica";
-import { BILLING_PERIOD, RATE_PER_CM3, MIN_BILL, dateStamp, peso } from "../data";
+import { BILLING_PERIOD, RATE_PER_CM3, MIN_BILL, dateStamp, peso, isOverdue, daysOverdue } from "../data";
+import {
+  fetchAnnouncements,
+  createAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncement,
+  fetchAuditLog,
+} from "../api";
 
-export function DashboardPage({ households, alerts, totalCollected, unpaidCount, setPage }) {
-  const top10 = households.slice(0, 10);
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+export function DashboardPage({ households, alerts, unpaidCount, setPage }) {
   const recentAlerts = alerts.slice(0, 5);
   const goto = (p) => { if (typeof setPage === "function") setPage(p); };
 
+  // The date the dashboard is "viewing". Defaults to the configured billing
+  // period (e.g. "May 2026") so the chart lines up with the billing summary.
+  const [bpMonth, bpYear] = BILLING_PERIOD.replace(/^Month of\s+/i, "").split(" ");
+  const today = new Date();
+  const [month, setMonth] = useState(Math.max(0, MONTHS.indexOf(bpMonth))); // 0–11
+  const [year, setYear] = useState(Number(bpYear) || today.getFullYear());
+  const [day, setDay] = useState(today.getDate());
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const safeDay = Math.min(day, daysInMonth);
+  const periodLabel = `${MONTHS[month]} ${year}`;
+  const displayDate = new Date(year, month, safeDay).toLocaleDateString("en-PH", {
+    year: "numeric", month: "long", day: "numeric",
+  });
+
+  // Years offered in the picker: every year present in billing history plus a
+  // couple around today, so the admin can move between real periods.
+  const historyYears = households.flatMap((h) =>
+    (h.history || []).map((r) => Number((r.period || "").split(" ")[1]))
+  ).filter(Boolean);
+  const yearOptions = [...new Set([
+    ...historyYears, today.getFullYear(), today.getFullYear() + 1, year,
+  ])].sort((a, b) => a - b);
+
+  // Consumption for the selected period, pulled from each household's billing
+  // history. Households with no bill for that period are shown as 0.
+  const withUsage = households.map((h) => {
+    const rec = (h.history || []).find((r) => r.period === periodLabel);
+    return {
+      ...h,
+      rec,
+      periodUsage: rec ? Math.max(0, rec.curr - rec.prev) : 0,
+      hasData: !!rec,
+      // Only the latest billing period carries a live paid/unpaid status; older
+      // periods are treated as settled (same convention as the resident view).
+      isLatestPeriod: periodLabel === h.period,
+    };
+  });
+  const top10 = [...withUsage].sort((a, b) => b.periodUsage - a.periodUsage).slice(0, 10);
+  const maxUsage = Math.max(...top10.map((h) => h.periodUsage), 1);
+  const anyData = withUsage.some((h) => h.hasData);
+  const billingRows = withUsage.filter((h) => h.hasData).slice(0, 6);
+
+  const selectCls =
+    "border border-slate-300 rounded-lg px-2.5 py-1.5 text-[12px] bg-white text-slate-700 focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f]";
+
   return (
     <>
-      <SectionHeader title="Admin Dashboard" sub={`Barangay Kinamlutan Water System — ${new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}`} />
+      <SectionHeader title="Admin Dashboard" sub={`Barangay Kinamlutan Water System — ${displayDate}`} />
+
+      {/* Period picker — choose month, day, and year; the chart + header follow it */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <span className="text-[12px] font-medium text-slate-500">Viewing period:</span>
+        <select aria-label="Month" value={month} onChange={(e) => setMonth(Number(e.target.value))} className={selectCls}>
+          {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+        </select>
+        <select aria-label="Day" value={safeDay} onChange={(e) => setDay(Number(e.target.value))} className={selectCls}>
+          {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select aria-label="Year" value={year} onChange={(e) => setYear(Number(e.target.value))} className={selectCls}>
+          {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <button
+          type="button"
+          onClick={() => { setMonth(today.getMonth()); setDay(today.getDate()); setYear(today.getFullYear()); }}
+          className="text-[12px] text-sky-600 hover:text-sky-800 font-medium px-1"
+        >
+          Today
+        </button>
+      </div>
       <div className="flex gap-3 flex-wrap mb-5">
         <button onClick={() => goto("households")} className="flex-1 min-w-[130px] text-left">
           <StatCard label="Total households" value={households.length} />
@@ -25,32 +103,49 @@ export function DashboardPage({ households, alerts, totalCollected, unpaidCount,
         <button onClick={() => goto("billing")} className="flex-1 min-w-[130px] text-left">
           <StatCard label="Unpaid bills" value={unpaidCount} tone="bad" />
         </button>
-        <button onClick={() => goto("billing")} className="flex-1 min-w-[130px] text-left">
-          <StatCard label="Total collected" value={peso(totalCollected)} tone="good" />
-        </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-5">
-        <div className="col-span-2 bg-white rounded-lg border border-slate-200 p-4">
-          <div className="font-semibold text-[13px] text-slate-700 mb-3">Water consumption this month (CM³) — top households</div>
-          <div className="flex items-end gap-2 h-32">
-            {top10.map((h) => {
-              const heightPct = Math.min((h.consumption / 60) * 100, 100);
-              return (
-                <div key={h.id} className="flex-1 flex flex-col items-center justify-end h-full group relative">
-                  <div className="text-[9px] text-slate-400 mb-1">{h.consumption}</div>
-                  <div
-                    className={`w-full rounded-t-sm transition-all duration-700 ${h.consumption > 35 ? "bg-amber-400" : "bg-sky-700"}`}
-                    style={{ height: `${heightPct}%`, minHeight: "6px" }}
-                  />
-                  <div className="text-[9px] text-slate-500 mt-1">{h.id.replace("HH-", "")}</div>
-                </div>
-              );
-            })}
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+        <div className="lg:col-span-2 card-hover bg-white rounded-lg border border-slate-200 p-4">
+          <div className="font-semibold text-[13px] text-slate-700 mb-3">Water consumption — Month of {periodLabel} (CM³) · top households</div>
+          {anyData ? (
+            <div className="flex items-end gap-2 h-32">
+              <style>{`
+                @keyframes barRise {
+                  from { transform: scaleY(0); opacity: 0.35; }
+                  to   { transform: scaleY(1); opacity: 1; }
+                }
+                .bar-rise { transform-origin: bottom; animation: barRise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+                @media (prefers-reduced-motion: reduce) { .bar-rise { animation: none; } }
+              `}</style>
+              {top10.map((h, i) => {
+                const heightPct = Math.min((h.periodUsage / maxUsage) * 100, 100);
+                const amber = h.periodUsage > 35;
+                return (
+                  <div key={`${h.id}-${periodLabel}`} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                    <div className="text-[9px] text-slate-400 mb-1">{h.periodUsage}</div>
+                    <div
+                      className={`w-full rounded-t-sm bar-rise cursor-default transition-[filter] duration-150 hover:brightness-110 ${amber ? "bg-amber-400" : "bg-sky-700"}`}
+                      style={{
+                        height: `${heightPct}%`,
+                        minHeight: "6px",
+                        animationDelay: `${i * 0.06}s`,
+                      }}
+                    />
+                    <div className="text-[9px] text-slate-500 mt-1">{h.id.replace("HH-", "")}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="h-32 flex flex-col items-center justify-center text-center gap-1">
+              <div className="text-[12px] text-slate-500">No consumption records for {periodLabel}.</div>
+              <div className="text-[11px] text-slate-400">Pick a different month or year above.</div>
+            </div>
+          )}
         </div>
 
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
+        <div className="card-hover bg-white rounded-lg border border-slate-200 p-4">
           <div className="font-semibold text-[13px] text-slate-700 mb-3">Recent alerts</div>
           <table className="w-full text-[11px]">
             <thead>
@@ -73,9 +168,11 @@ export function DashboardPage({ households, alerts, totalCollected, unpaidCount,
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <div className="font-semibold text-[13px] text-slate-700 mb-3">Billing summary — {BILLING_PERIOD}</div>
-        <table className="w-full text-[12px]">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 p-4">
+        <div className="font-semibold text-[13px] text-slate-700 mb-3">Billing summary — Month of {periodLabel}</div>
+        {billingRows.length > 0 ? (
+        <div className="overflow-x-auto">
+        <table className="w-full text-[12px] min-w-[560px]">
           <thead>
             <tr className="bg-[#1e3a5f] text-white">
               <th className="text-left px-3 py-2 font-semibold">Bill #</th>
@@ -89,66 +186,135 @@ export function DashboardPage({ households, alerts, totalCollected, unpaidCount,
             </tr>
           </thead>
           <tbody>
-            {households.slice(0, 6).map((h, i) => (
+            {billingRows.map((h, i) => {
+              const status = h.isLatestPeriod ? h.paymentStatus : "Paid";
+              return (
               <tr key={h.id} className={i % 2 ? "bg-slate-50" : "bg-white"}>
                 <td className="px-3 py-1.5 text-slate-500">BL-{String(i + 1).padStart(3, "0")}</td>
                 <td className="px-3 py-1.5 font-medium text-slate-700">{h.id}</td>
                 <td className="px-3 py-1.5 text-slate-600">{h.name}</td>
                 <td className="px-3 py-1.5 text-right text-slate-500">{h.standpost}</td>
-                <td className="px-3 py-1.5 text-right text-slate-500">{h.currCm3}</td>
-                <td className="px-3 py-1.5 text-right text-slate-500">{h.consumption}</td>
-                <td className="px-3 py-1.5 text-right font-semibold text-slate-800">{peso(h.amount)}</td>
+                <td className="px-3 py-1.5 text-right text-slate-500">{h.rec.curr}</td>
+                <td className="px-3 py-1.5 text-right text-slate-500">{h.periodUsage}</td>
+                <td className="px-3 py-1.5 text-right font-semibold text-slate-800">{peso(h.rec.amt)}</td>
                 <td className="px-3 py-1.5 text-center">
-                  {h.paymentStatus === "Paid" ? <Badge tone="good">Paid</Badge> : <Badge tone="bad">Unpaid</Badge>}
+                  {status === "Paid" ? <Badge tone="good">Paid</Badge> : <Badge tone="bad">Unpaid</Badge>}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
+        </div>
+        ) : (
+          <div className="py-8 text-center text-[12px] text-slate-400">No bills for {periodLabel}.</div>
+        )}
       </div>
     </>
   );
 }
 
 export function ConsumptionPage({ households }) {
+  // Period selector — mirrors the dashboard's, scoped to month + year since
+  // consumption is a monthly figure.
+  const [bpMonth, bpYear] = BILLING_PERIOD.replace(/^Month of\s+/i, "").split(" ");
+  const today = new Date();
+  const [month, setMonth] = useState(Math.max(0, MONTHS.indexOf(bpMonth)));
+  const [year, setYear] = useState(Number(bpYear) || today.getFullYear());
+  const periodLabel = `${MONTHS[month]} ${year}`;
+
+  const historyYears = households.flatMap((h) =>
+    (h.history || []).map((r) => Number((r.period || "").split(" ")[1]))
+  ).filter(Boolean);
+  const yearOptions = [...new Set([
+    ...historyYears, today.getFullYear(), today.getFullYear() + 1, year,
+  ])].sort((a, b) => a - b);
+
+  // Readings for the selected period, from each household's billing history.
+  // Live flow/status only apply to the current (latest) period.
+  const rows = households
+    .map((h) => {
+      const rec = (h.history || []).find((r) => r.period === periodLabel);
+      return { ...h, rec, isLatest: periodLabel === h.period, hasData: !!rec };
+    })
+    .filter((h) => h.hasData);
+
+  const selectCls =
+    "border border-slate-300 rounded-lg px-2.5 py-1.5 text-[12px] bg-white text-slate-700 focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f]";
+
   return (
     <>
-      <SectionHeader title="Water Consumption" sub="Real-time readings transmitted from IoT flow sensors" />
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <table className="w-full text-[12px]">
-          <thead>
-            <tr className="bg-[#1e3a5f] text-white">
-              <th className="text-left px-3 py-2 font-semibold">Household</th>
-              <th className="text-left px-3 py-2 font-semibold">Resident</th>
-              <th className="text-right px-3 py-2 font-semibold">Prev. CM³</th>
-              <th className="text-right px-3 py-2 font-semibold">Curr. CM³</th>
-              <th className="text-right px-3 py-2 font-semibold">Flow (L/min)</th>
-              <th className="text-center px-3 py-2 font-semibold">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {households.map((h, i) => (
-              <tr key={h.id} className={i % 2 ? "bg-slate-50" : "bg-white"}>
-                <td className="px-3 py-2 font-medium text-slate-700">{h.id}</td>
-                <td className="px-3 py-2 text-slate-600">{h.name}</td>
-                <td className="px-3 py-2 text-right text-slate-500">{h.prevCm3}</td>
-                <td className="px-3 py-2 text-right font-semibold text-slate-800">{h.currCm3}</td>
-                <td className="px-3 py-2 text-right text-slate-500">{h.lastFlow}</td>
-                <td className="px-3 py-2 text-center">
-                  {h.flowType === "High flow" ? <Badge tone="bad">High flow</Badge> : <Badge tone="good">Normal</Badge>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <SectionHeader title="Water Consumption" sub={`Meter readings for ${periodLabel} · transmitted from IoT flow sensors`} />
+
+      {/* Period picker — choose month and year; the readings below follow it */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <span className="text-[12px] font-medium text-slate-500">Viewing period:</span>
+        <select aria-label="Month" value={month} onChange={(e) => setMonth(Number(e.target.value))} className={selectCls}>
+          {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+        </select>
+        <select aria-label="Year" value={year} onChange={(e) => setYear(Number(e.target.value))} className={selectCls}>
+          {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <button
+          type="button"
+          onClick={() => { setMonth(today.getMonth()); setYear(today.getFullYear()); }}
+          className="text-[12px] text-sky-600 hover:text-sky-800 font-medium px-1"
+        >
+          This month
+        </button>
       </div>
+
+      {rows.length > 0 ? (
+        <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-x-auto">
+          <table className="w-full text-[12px] min-w-[620px]">
+            <thead>
+              <tr className="bg-[#1e3a5f] text-white">
+                <th className="text-left px-3 py-2 font-semibold">Household</th>
+                <th className="text-left px-3 py-2 font-semibold">Resident</th>
+                <th className="text-right px-3 py-2 font-semibold">Prev. CM³</th>
+                <th className="text-right px-3 py-2 font-semibold">Curr. CM³</th>
+                <th className="text-right px-3 py-2 font-semibold">Consumption</th>
+                <th className="text-right px-3 py-2 font-semibold">Flow (L/min)</th>
+                <th className="text-center px-3 py-2 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((h, i) => {
+                const consumption = Math.max(0, h.rec.curr - h.rec.prev);
+                return (
+                  <tr key={h.id} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                    <td className="px-3 py-2 font-medium text-slate-700">{h.id}</td>
+                    <td className="px-3 py-2 text-slate-600">{h.name}</td>
+                    <td className="px-3 py-2 text-right text-slate-500">{h.rec.prev}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-slate-800">{h.rec.curr}</td>
+                    <td className="px-3 py-2 text-right text-slate-600">{consumption}</td>
+                    <td className="px-3 py-2 text-right text-slate-500">{h.isLatest ? h.lastFlow : "—"}</td>
+                    <td className="px-3 py-2 text-center">
+                      {h.isLatest ? (
+                        h.flowType === "High flow" ? <Badge tone="bad">High flow</Badge> : <Badge tone="good">Normal</Badge>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="card-hover bg-white rounded-lg border border-slate-200 py-10 text-center text-[12px] text-slate-400">
+          No meter readings for {periodLabel}.
+        </div>
+      )}
     </>
   );
 }
 
-export function BillingPage({ households, markPaid, markUnpaid, receiveGcashPayment, showToast, billsGenerated, unpaidCount, totalCollected, onGenerateBills }) {
+export function BillingPage({ households, markPaid, markUnpaid, receiveGcashPayment, showToast, billsGenerated, unpaidCount, onGenerateBills, canGenerateBills = true }) {
   const paidCount = households.length - unpaidCount;
   const gcashPendingCount = households.filter((h) => h.paymentStatus === "GCash Pending").length;
+  const overdueCount = households.filter(isOverdue).length;
   const [statusFilter, setStatusFilter] = React.useState("All");
   // { action: "paid" | "unpaid", id, name, amt } while a confirmation is pending.
   const [confirmPay, setConfirmPay] = React.useState(null);
@@ -228,6 +394,7 @@ export function BillingPage({ households, markPaid, markUnpaid, receiveGcashPaym
   const filteredBillingRecords = billingRecords.filter(({ household }) => {
     if (statusFilter === "All") return true;
     if (statusFilter === "GCash Pending") return household.paymentStatus === "GCash Pending";
+    if (statusFilter === "Overdue") return isOverdue(household);
     return statusFilter === "Paid" ? household.paymentStatus === "Paid" : household.paymentStatus === "Unpaid";
   });
 
@@ -262,22 +429,24 @@ export function BillingPage({ households, markPaid, markUnpaid, receiveGcashPaym
           </div>
         </div>
         <div className="ml-auto flex gap-2">
-          <Btn
-            variant="primary"
-            onClick={() => {
-              if (!selectedPeriodKey) {
-                showToast("Select a specific billing month and year first.", "warn");
-                return;
-              }
-              if (typeof onGenerateBills === "function") {
-                onGenerateBills(selectedPeriodKey);
-              } else {
-                showToast("Bills generated for all households", "success");
-              }
-            }}
-          >
-            Generate Bills
-          </Btn>
+          {canGenerateBills && (
+            <Btn
+              variant="primary"
+              onClick={() => {
+                if (!selectedPeriodKey) {
+                  showToast("Select a specific billing month and year first.", "warn");
+                  return;
+                }
+                if (typeof onGenerateBills === "function") {
+                  onGenerateBills(selectedPeriodKey);
+                } else {
+                  showToast("Bills generated for all households", "success");
+                }
+              }}
+            >
+              Generate Bills
+            </Btn>
+          )}
           <Btn onClick={() => window.print()}>Export PDF</Btn>
           <Btn onClick={() => {
             const header = ["Bill #","Household","Resident name","Standpost #","Meter #","Prev CM3","Curr CM3","Consumed","Total Amount","Method","Status"];
@@ -315,11 +484,11 @@ export function BillingPage({ households, markPaid, markUnpaid, receiveGcashPaym
         <StatCard label="Paid" value={paidCount} tone="good" />
         <StatCard label="GCash pending" value={gcashPendingCount} tone="warn" />
         <StatCard label="Unpaid" value={unpaidCount} tone="bad" />
-        <StatCard label="Total collected" value={peso(totalCollected)} tone="good" />
+        <StatCard label="Overdue" value={overdueCount} tone="bad" />
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
-        {['All', 'Paid', 'GCash Pending', 'Unpaid'].map((status) => (
+        {['All', 'Paid', 'GCash Pending', 'Unpaid', 'Overdue'].map((status) => (
           <button
             key={status}
             onClick={() => setStatusFilter(status)}
@@ -329,18 +498,20 @@ export function BillingPage({ households, markPaid, markUnpaid, receiveGcashPaym
                   ? 'bg-emerald-600 text-white border-emerald-600'
                   : status === 'Unpaid'
                   ? 'bg-rose-600 text-white border-rose-600'
+                  : status === 'Overdue'
+                  ? 'bg-red-700 text-white border-red-700'
                   : status === 'GCash Pending'
                   ? 'bg-sky-600 text-white border-sky-600'
                   : 'bg-slate-900 text-white border-slate-900'
                 : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
             }`}
           >
-            {status}
+            {status}{status === 'Overdue' && overdueCount > 0 ? ` (${overdueCount})` : ''}
           </button>
         ))}
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mb-3 print-area">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden mb-3 print-area">
         <div className="px-4 py-2.5 text-[13px] font-semibold text-slate-700 border-b border-slate-100">Billing records — {selectedPeriodLabel}</div>
         <div className="overflow-x-auto">
         <table className="w-full text-[12px]">
@@ -383,6 +554,10 @@ export function BillingPage({ households, markPaid, markUnpaid, receiveGcashPaym
                   <td className="px-3 py-1.5 text-center whitespace-nowrap">
                     {household.paymentStatus === "Paid" ? (
                       <Badge tone="good">Paid</Badge>
+                    ) : isOverdue(household) ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-700 text-white">
+                        Overdue · {daysOverdue(household.dueDate, household.paymentStatus)}d
+                      </span>
                     ) : household.paymentStatus === "GCash Pending" ? (
                       <Badge tone="info">GCash Pending</Badge>
                     ) : (
@@ -522,9 +697,10 @@ export function AlertsPage({ alerts, filter, setFilter, selectedAlertId, setSele
         <StatCard label="No sensor data" value={counts["No Data"]} accent="border-t-slate-300" />
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mb-3">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden mb-3">
         <div className="px-4 py-2.5 text-[13px] font-semibold text-slate-700 border-b border-slate-100">Alert log — {dateStamp()}, {new Date().getFullYear()}</div>
-        <table className="w-full text-[12px]">
+        <div className="overflow-x-auto">
+        <table className="w-full text-[12px] min-w-[640px]">
           <thead>
             <tr className="text-slate-400 border-b border-slate-100">
               <th className="text-left px-3 py-2 font-medium">Alert ID</th>
@@ -576,6 +752,7 @@ export function AlertsPage({ alerts, filter, setFilter, selectedAlertId, setSele
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {viewed && (
@@ -686,7 +863,10 @@ export function HouseholdsPage({ households, showToast, onResetPassword, onAddHo
           filtered.map((h) => {
             const isExpanded = expandedId === h.id;
             return (
-              <div key={h.id} className="bg-white rounded-lg border border-slate-200 p-3.5">
+              <div
+                key={h.id}
+                className="card-hover bg-white rounded-lg border border-slate-200 p-3.5 cursor-pointer motion-safe:hover:-translate-y-0.5"
+              >
                 <button
                   className="w-full text-left"
                   onClick={() => setExpandedId(isExpanded ? null : h.id)}
@@ -955,10 +1135,6 @@ export function RecordsPage({ households, showToast }) {
   const totalRecords = allRecords.length;
   const paidCount = allRecords.filter(({ record }) => record.paid).length;
   const unpaidCount = totalRecords - paidCount;
-  const totalCollected = allRecords
-    .filter(({ record }) => record.paid)
-    .reduce((sum, { record }) => sum + record.amt, 0);
-
   function exportCsv() {
     const header = ["Household", "Resident name", "Period", "Prev CM3", "Curr CM3", "Consumed", "Amount", "Status"];
     const rows = filtered.map(({ household, record }) => [
@@ -994,7 +1170,6 @@ export function RecordsPage({ households, showToast }) {
         <StatCard label="Total records" value={totalRecords} />
         <StatCard label="Paid" value={paidCount} tone="good" />
         <StatCard label="Unpaid" value={unpaidCount} tone="bad" />
-        <StatCard label="Total collected" value={peso(totalCollected)} tone="good" />
       </div>
 
       <div className="mb-4 flex flex-wrap gap-3 items-end">
@@ -1041,7 +1216,7 @@ export function RecordsPage({ households, showToast }) {
           : `Showing all ${totalRecords} records`}
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
             <thead>
@@ -1104,7 +1279,7 @@ export function SettingsPage({ showToast }) {
   return (
     <>
       <SectionHeader title="Settings" sub="System configuration" />
-      <div className="bg-white rounded-lg border border-slate-200 p-5 max-w-md text-[12px] space-y-4">
+      <div className="card-hover bg-white rounded-lg border border-slate-200 p-5 max-w-md text-[12px] space-y-4">
         <div className="flex items-center justify-between pb-1">
           <span className="font-semibold text-slate-700 text-[13px]">Billing configuration</span>
           <button
@@ -1360,4 +1535,334 @@ function chunk(items, size) {
     chunks.push(items.slice(i, i + size));
   }
   return chunks;
+}
+
+// ─────────────────────────────────────────────────────────────
+// ANNOUNCEMENTS (admin management) — Water Officer only.
+// Posts here appear on every resident's Announcements page.
+// ─────────────────────────────────────────────────────────────
+const ANN_TYPES = [
+  { value: "info", label: "Info", badge: "bg-sky-100 text-sky-700", dot: "bg-sky-500" },
+  { value: "success", label: "Update", badge: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
+  { value: "warn", label: "Advisory", badge: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
+];
+
+function annStyle(type) {
+  return ANN_TYPES.find((t) => t.value === type) || ANN_TYPES[0];
+}
+
+const EMPTY_ANN = () => ({
+  type: "info",
+  title: "",
+  tag: "",
+  content: "",
+  date: new Date().toISOString().slice(0, 10),
+});
+
+export function AnnouncementsPage({ showToast }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null | "new" | announcement object
+  const [form, setForm] = useState(EMPTY_ANN());
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      setItems(await fetchAnnouncements());
+    } catch (err) {
+      showToast("Could not load announcements: " + err.message, "warn");
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => { load(); }, []); // eslint-disable-line
+
+  function startNew() { setForm(EMPTY_ANN()); setEditing("new"); }
+  function startEdit(a) {
+    setForm({ type: a.type, title: a.title, tag: a.tag || "", content: a.content, date: a.date });
+    setEditing(a);
+  }
+  function cancel() { setEditing(null); setForm(EMPTY_ANN()); }
+
+  async function save(e) {
+    e.preventDefault();
+    if (!form.title.trim() || !form.content.trim()) {
+      showToast("Title and content are required.", "warn");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (editing === "new") {
+        await createAnnouncement(form);
+        showToast("Announcement posted.", "success");
+      } else {
+        await updateAnnouncement(editing.id, form);
+        showToast("Announcement updated.", "success");
+      }
+      cancel();
+      await load();
+    } catch (err) {
+      showToast("Could not save announcement: " + err.message, "warn");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id) {
+    setConfirmDelete(null);
+    try {
+      await deleteAnnouncement(id);
+      showToast("Announcement deleted.", "success");
+      await load();
+    } catch (err) {
+      showToast("Could not delete announcement: " + err.message, "warn");
+    }
+  }
+
+  const inputCls =
+    "w-full border border-slate-300 rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition";
+
+  return (
+    <>
+      <SectionHeader title="Announcements" sub="Post updates that appear on every resident's portal" />
+
+      {!editing && (
+        <div className="mb-4">
+          <Btn variant="primary" onClick={startNew}>+ New announcement</Btn>
+        </div>
+      )}
+
+      {editing && (
+        <form onSubmit={save} className="card-hover bg-white rounded-lg border border-slate-200 p-4 mb-5">
+          <div className="font-semibold text-[13px] text-slate-700 mb-3">
+            {editing === "new" ? "New announcement" : "Edit announcement"}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="text-[11px] font-semibold text-slate-600 block mb-1">Title</label>
+              <input className={inputCls} value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="e.g., Scheduled Water Interruption" />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-slate-600 block mb-1">Category tag</label>
+              <input className={inputCls} value={form.tag}
+                onChange={(e) => setForm({ ...form, tag: e.target.value })}
+                placeholder="e.g., Maintenance" />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-slate-600 block mb-1">Type</label>
+              <select className={inputCls} value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value })}>
+                {ANN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-slate-600 block mb-1">Date</label>
+              <input type="date" className={inputCls} value={form.date}
+                onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            </div>
+          </div>
+          <div className="mb-3">
+            <label className="text-[11px] font-semibold text-slate-600 block mb-1">Message</label>
+            <textarea className={`${inputCls} resize-y`} rows={4} value={form.content}
+              onChange={(e) => setForm({ ...form, content: e.target.value })}
+              placeholder="Write the announcement details residents will see…" />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Btn onClick={cancel}>Cancel</Btn>
+            <Btn variant="primary" onClick={save} disabled={saving}>
+              {saving ? "Saving…" : editing === "new" ? "Post announcement" : "Save changes"}
+            </Btn>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="py-10 text-center text-[12px] text-slate-400">Loading announcements…</div>
+      ) : items.length === 0 ? (
+        <div className="card-hover bg-white rounded-lg border border-slate-200 py-10 text-center text-[12px] text-slate-400">
+          No announcements yet. Post one to notify residents.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((a) => {
+            const style = annStyle(a.type);
+            return (
+              <div key={a.id} className="card-hover bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${style.dot}`} />
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[13px] text-slate-800">{a.title}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {a.tag && (
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${style.badge}`}>{a.tag}</span>
+                        )}
+                        <span className="text-[10px] text-slate-400">{a.date}</span>
+                      </div>
+                      <div className="text-[12px] text-slate-600 mt-1.5 leading-relaxed">{a.content}</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <Btn variant="ghost" onClick={() => startEdit(a)}>Edit</Btn>
+                    <Btn variant="ghostMuted" onClick={() => setConfirmDelete(a)}>Delete</Btn>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setConfirmDelete(null)}>
+          <div className="bg-white rounded-2xl w-80 overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-100">
+              <div className="font-bold text-slate-800">Delete announcement?</div>
+            </div>
+            <div className="p-5 text-sm text-slate-600">
+              <p className="mb-4">
+                Remove <span className="font-semibold text-slate-800">"{confirmDelete.title}"</span>? Residents will no longer see it.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Btn onClick={() => setConfirmDelete(null)}>Cancel</Btn>
+                <Btn variant="primary" onClick={() => remove(confirmDelete.id)}>Delete</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUDIT LOG (read-only) — Water Officer only.
+// Shows who did what (staff email + role + action + timestamp).
+// ─────────────────────────────────────────────────────────────
+const AUDIT_ACTIONS = {
+  "bill.mark_paid": { label: "Marked paid", badge: "bg-emerald-100 text-emerald-700" },
+  "bill.mark_unpaid": { label: "Reverted to unpaid", badge: "bg-amber-100 text-amber-700" },
+  "bill.gcash_confirm": { label: "Confirmed GCash", badge: "bg-emerald-100 text-emerald-700" },
+  "bill.generate": { label: "Generated bills", badge: "bg-sky-100 text-sky-700" },
+  "household.create": { label: "Added household", badge: "bg-sky-100 text-sky-700" },
+  "resident.reset_password": { label: "Reset password", badge: "bg-amber-100 text-amber-700" },
+  "alert.resolve": { label: "Resolved alert", badge: "bg-emerald-100 text-emerald-700" },
+  "alert.unresolve": { label: "Reopened alert", badge: "bg-amber-100 text-amber-700" },
+  "announcement.create": { label: "Posted announcement", badge: "bg-sky-100 text-sky-700" },
+  "announcement.update": { label: "Edited announcement", badge: "bg-sky-100 text-sky-700" },
+  "announcement.delete": { label: "Deleted announcement", badge: "bg-rose-100 text-rose-700" },
+};
+
+function auditActionMeta(action) {
+  return AUDIT_ACTIONS[action] || { label: action, badge: "bg-slate-100 text-slate-600" };
+}
+
+function formatAuditTime(value) {
+  if (!value) return "—";
+  // SQLite datetime('now') is UTC, "YYYY-MM-DD HH:MM:SS" — mark as UTC then localize.
+  const d = new Date(String(value).replace(" ", "T") + "Z");
+  return isNaN(d) ? value : d.toLocaleString("en-PH", {
+    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
+
+export function AuditLogPage({ showToast }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [roleFilter, setRoleFilter] = useState("All");
+  const [query, setQuery] = useState("");
+
+  async function load() {
+    setLoading(true);
+    try {
+      setEntries(await fetchAuditLog(300));
+    } catch (err) {
+      showToast("Could not load audit log: " + err.message, "warn");
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => { load(); }, []); // eslint-disable-line
+
+  const filtered = entries.filter((e) => {
+    if (roleFilter !== "All" && (e.actorRole || "") !== roleFilter) return false;
+    if (query) {
+      const hay = `${e.actorEmail || ""} ${e.details || ""} ${e.target || ""} ${auditActionMeta(e.action).label}`.toLowerCase();
+      if (!hay.includes(query.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  const selectCls =
+    "border border-slate-300 rounded-lg px-2.5 py-1.5 text-[12px] bg-white text-slate-700 focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f]";
+
+  return (
+    <>
+      <SectionHeader title="Audit Log" sub="Every staff action, with who did it and when" />
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search email, household, details…"
+          className={`${selectCls} w-full sm:w-64`}
+        />
+        <select aria-label="Role" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className={selectCls}>
+          <option value="All">All staff</option>
+          <option value="officer">Water Officer</option>
+          <option value="collector">Collector</option>
+        </select>
+        <button type="button" onClick={load} className="text-[12px] text-sky-600 hover:text-sky-800 font-medium px-1">
+          Refresh
+        </button>
+        <span className="text-[11px] text-slate-400 ml-auto">{filtered.length} entr{filtered.length === 1 ? "y" : "ies"}</span>
+      </div>
+
+      {loading ? (
+        <div className="py-10 text-center text-[12px] text-slate-400">Loading audit log…</div>
+      ) : filtered.length === 0 ? (
+        <div className="card-hover bg-white rounded-lg border border-slate-200 py-10 text-center text-[12px] text-slate-400">
+          No matching activity yet.
+        </div>
+      ) : (
+        <div className="card-hover bg-white rounded-lg border border-slate-200 overflow-x-auto">
+          <table className="w-full text-[12px] min-w-[720px]">
+            <thead>
+              <tr className="bg-[#1e3a5f] text-white">
+                <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">When</th>
+                <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Staff</th>
+                <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Role</th>
+                <th className="text-left px-3 py-2 font-semibold whitespace-nowrap">Action</th>
+                <th className="text-left px-3 py-2 font-semibold">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((e, i) => {
+                const meta = auditActionMeta(e.action);
+                return (
+                  <tr key={e.id} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                    <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">{formatAuditTime(e.createdAt)}</td>
+                    <td className="px-3 py-1.5 text-slate-700 whitespace-nowrap">{e.actorEmail || "—"}</td>
+                    <td className="px-3 py-1.5 whitespace-nowrap">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${e.actorRole === "officer" ? "bg-indigo-100 text-indigo-700" : "bg-teal-100 text-teal-700"}`}>
+                        {e.actorRole === "officer" ? "Officer" : e.actorRole === "collector" ? "Collector" : e.actorRole || "—"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5 whitespace-nowrap">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${meta.badge}`}>{meta.label}</span>
+                    </td>
+                    <td className="px-3 py-1.5 text-slate-600">{e.details || e.target || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
 }

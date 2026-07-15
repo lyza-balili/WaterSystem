@@ -8,6 +8,8 @@ require("./db/database"); // ensures schema is created on boot
 const residentAuthRoutes = require("./routes/residentAuth");
 const adminAuthRoutes = require("./routes/adminAuth");
 const dataRoutes = require("./routes/data");
+const announcementRoutes = require("./routes/announcements");
+const auditRoutes = require("./routes/audit");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -45,6 +47,8 @@ app.use("/api/admin/reset-password", loginLimiter);
 
 app.use("/api/resident", residentAuthRoutes);
 app.use("/api/admin", adminAuthRoutes);
+app.use("/api/announcements", announcementRoutes);
+app.use("/api/audit", auditRoutes);
 app.use("/api", dataRoutes);
 
 app.use((req, res) => {

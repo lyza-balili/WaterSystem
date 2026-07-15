@@ -9,6 +9,8 @@ import {
   RecordsPage,
   SettingsPage,
   BillStatementsPage,
+  AnnouncementsPage,
+  AuditLogPage,
 } from "./AdminPages";
 import { adminForgotPassword, adminResetPassword } from "../api";
 import logoImage from "../assets/brgy.jpg";
@@ -37,21 +39,37 @@ const NAV_ITEMS = [
   {
     id: "alerts",
     label: "Alerts",
+    officerOnly: true,
     icon: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z",
   },
   {
     id: "households",
     label: "Households",
+    officerOnly: true,
     icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
   },
   {
     id: "records",
     label: "Records",
+    officerOnly: true,
     icon: "M9 17v-2a4 4 0 014-4h4m0 0l-3-3m3 3l-3 3M4 7h16M4 11h7m-7 4h7m-7 4h7",
+  },
+  {
+    id: "announcements",
+    label: "Announcements",
+    officerOnly: true,
+    icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
+  },
+  {
+    id: "audit",
+    label: "Audit Log",
+    officerOnly: true,
+    icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01",
   },
   {
     id: "settings",
     label: "Settings",
+    officerOnly: true,
     icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z",
   },
 ];
@@ -60,7 +78,6 @@ export function AdminView(props) {
   const {
     households,
     alerts,
-    totalCollected,
     unpaidCount,
     billsGenerated,
     page,
@@ -69,6 +86,7 @@ export function AdminView(props) {
     onAdminLogin,
     onAdminLogout,
     adminEmail,
+    adminRole = "officer",
     markPaid,
     markUnpaid,
     receiveGcashPayment,
@@ -84,73 +102,124 @@ export function AdminView(props) {
     onAddHousehold,
   } = props;
 
+  const isOfficer = adminRole === "officer";
+  const roleLabel = isOfficer ? "Water Officer" : "Collector";
+  // Collectors get a payments-focused subset of the navigation.
+  const navItems = NAV_ITEMS.filter((item) => isOfficer || !item.officerOnly);
+
   const unresolvedCount = alerts.filter((a) => a.status === "Unresolved").length;
   const gcashPendingCount = households.filter((h) => h.paymentStatus === "GCash Pending").length;
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   if (!adminAuthenticated || page === "login") {
     return <AdminLoginScreen onAdminLogin={onAdminLogin} />;
   }
 
+  // A collector who somehow lands on an officer-only page falls back to the dashboard.
+  const activePage = navItems.some((i) => i.id === page) ? page : "dashboard";
+  const currentLabel = NAV_ITEMS.find((i) => i.id === activePage)?.label || "Dashboard";
+
+  // On mobile, selecting a page should also close the slide-in drawer.
+  const goToPage = (id) => {
+    setPage(id);
+    setMobileNavOpen(false);
+  };
+
   return (
-    <div className="flex">
-      {/* Sidebar */}
-      <div className={`${collapsed ? "w-16" : "w-52"} bg-[#1e3a5f] min-h-[680px] text-white flex flex-col flex-shrink-0 transition-[width] duration-200`}>
+    <div className="lg:flex min-h-screen">
+      {/* Mobile top bar (hidden on large screens) */}
+      <div className="lg:hidden sticky top-0 z-30 flex items-center gap-3 bg-[#1e3a5f] text-white px-4 py-3">
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Open menu"
+          className="w-9 h-9 flex items-center justify-center rounded-md hover:bg-white/10 transition"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <img src={logoImage} alt="logo" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+        <div className="font-semibold text-[13px] truncate">{currentLabel}</div>
+      </div>
+
+      {/* Backdrop when the mobile drawer is open */}
+      {mobileNavOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-40"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — static on large screens, slide-in drawer on mobile */}
+      <div className={`
+        ${collapsed ? "lg:w-16" : "lg:w-52"} w-64
+        bg-[#1e3a5f] text-white flex flex-col flex-shrink-0
+        fixed lg:static inset-y-0 left-0 z-50 lg:z-auto lg:min-h-screen
+        transform transition-transform duration-200
+        ${mobileNavOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0
+      `}>
         {/* Logo block + collapse toggle */}
-        <div className={`flex items-center px-3 py-4 border-b border-white/10 ${collapsed ? "flex-col gap-3" : "gap-2.5"}`}>
+        <div className={`flex items-center px-3 py-4 border-b border-white/10 gap-2.5 ${collapsed ? "lg:flex-col lg:gap-3" : ""}`}>
           <img
             src={logoImage}
             alt="logo"
             className="w-10 h-10 rounded-full object-cover flex-shrink-0 shadow"
           />
-          {!collapsed && (
-            <div className="leading-[1.25] flex-1 min-w-0">
-              <div className="font-extrabold text-[10px] uppercase tracking-wide">Barangay</div>
-              <div className="font-extrabold text-[10px] uppercase tracking-wide">Kinamlutan</div>
-              <div className="font-extrabold text-[10px] uppercase tracking-wide">Water System</div>
-            </div>
-          )}
+          <div className={`leading-[1.25] flex-1 min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
+            <div className="font-extrabold text-[10px] uppercase tracking-wide">Barangay</div>
+            <div className="font-extrabold text-[10px] uppercase tracking-wide">Kinamlutan</div>
+            <div className="font-extrabold text-[10px] uppercase tracking-wide">Water System</div>
+          </div>
           <button
             onClick={() => setCollapsed((c) => !c)}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-blue-200 hover:text-white hover:bg-white/10 transition flex-shrink-0"
+            className="hidden lg:flex w-7 h-7 items-center justify-center rounded-md text-blue-200 hover:text-white hover:bg-white/10 transition flex-shrink-0"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={collapsed ? "M9 5l7 7-7 7" : "M15 19l-7-7 7-7"} />
             </svg>
           </button>
+          {/* Mobile-only close button for the drawer */}
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            aria-label="Close menu"
+            className="lg:hidden ml-auto w-7 h-7 flex items-center justify-center rounded-md text-blue-200 hover:text-white hover:bg-white/10 transition flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
         {/* Admin info */}
-        <div className={`flex items-center px-3 py-3 border-b border-white/10 ${collapsed ? "justify-center" : "gap-2.5"}`}>
+        <div className={`flex items-center px-3 py-3 border-b border-white/10 gap-2.5 ${collapsed ? "lg:gap-0 lg:justify-center" : ""}`}>
           <div className="w-8 h-8 rounded-full bg-sky-500 flex items-center justify-center flex-shrink-0" title={collapsed ? adminEmail || "Admin" : undefined}>
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-semibold text-white truncate">{adminEmail || "Admin"}</div>
-              <div className="text-[10px] text-blue-300">Water Office</div>
-            </div>
-          )}
+          <div className={`flex-1 min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
+            <div className="text-[12px] font-semibold text-white truncate">{adminEmail || "Admin"}</div>
+            <div className="text-[10px] text-blue-300">{roleLabel}</div>
+          </div>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 py-1.5">
-          {NAV_ITEMS.map((item) => {
-            const isActive = page === item.id;
+          {navItems.map((item) => {
+            const isActive = activePage === item.id;
             const badgeCount =
               item.id === "alerts" ? unresolvedCount : item.id === "billing" ? gcashPendingCount : 0;
             const badgeColor = item.id === "alerts" ? "text-rose-400" : "text-sky-300";
             return (
               <button
                 key={item.id}
-                onClick={() => setPage(item.id)}
+                onClick={() => goToPage(item.id)}
                 title={collapsed ? item.label : undefined}
-                className={`w-full text-[12px] flex items-center transition border-l-2 ${
-                  collapsed ? "justify-center px-0 py-2.5" : "text-left px-4 py-2.5 gap-2.5"
+                className={`w-full text-[12px] flex items-center transition border-l-2 text-left px-4 py-2.5 gap-2.5 ${
+                  collapsed ? "lg:justify-center lg:px-0 lg:gap-0" : ""
                 } ${
                   isActive
                     ? "bg-white/15 font-semibold border-sky-400 text-white"
@@ -161,16 +230,16 @@ export function AdminView(props) {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={item.icon} />
                   </svg>
-                  {/* Collapsed: show the count as a small number on the icon corner */}
+                  {/* Collapsed (desktop only): show the count as a small number on the icon corner */}
                   {collapsed && badgeCount > 0 && (
-                    <span className={`absolute -top-1.5 -right-2.5 ${badgeColor} text-[10px] font-bold tabular-nums leading-none`}>
+                    <span className={`hidden lg:block absolute -top-1.5 -right-2.5 ${badgeColor} text-[10px] font-bold tabular-nums leading-none`}>
                       {badgeCount}
                     </span>
                   )}
                 </span>
-                {!collapsed && <span className="truncate">{item.label}</span>}
-                {!collapsed && badgeCount > 0 && (
-                  <span className={`ml-auto ${badgeColor} text-[12px] font-semibold tabular-nums leading-none`}>
+                <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.label}</span>
+                {badgeCount > 0 && (
+                  <span className={`ml-auto ${badgeColor} text-[12px] font-semibold tabular-nums leading-none ${collapsed ? "lg:hidden" : ""}`}>
                     {badgeCount}
                   </span>
                 )}
@@ -185,8 +254,8 @@ export function AdminView(props) {
             if (typeof onAdminLogout === "function") onAdminLogout();
           }}
           title={collapsed ? "Logout" : undefined}
-          className={`flex items-center py-3 text-[12px] text-rose-300 hover:text-white border-t border-white/10 transition ${
-            collapsed ? "justify-center px-0" : "gap-2 px-4"
+          className={`flex items-center py-3 text-[12px] text-rose-300 hover:text-white border-t border-white/10 transition gap-2 px-4 ${
+            collapsed ? "lg:justify-center lg:px-0 lg:gap-0" : ""
           }`}
         >
           <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -197,32 +266,31 @@ export function AdminView(props) {
               d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
             />
           </svg>
-          {!collapsed && "Logout"}
+          <span className={collapsed ? "lg:hidden" : ""}>Logout</span>
         </button>
       </div>
 
       {/* Main content */}
       <div className="flex-1 bg-slate-50 min-w-0">
-        <div className="bg-white border-b border-slate-200 px-6 py-2 flex items-center justify-between">
-          <div className="text-[12px] text-slate-500">
+        <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-2 flex items-center justify-between gap-2">
+          <div className="text-[12px] text-slate-500 truncate">
             Signed in as <span className="font-semibold text-slate-700">{adminEmail || "Admin"}</span>
           </div>
-          <div className="text-[11px] text-slate-400">
+          <div className="hidden sm:block text-[11px] text-slate-400 flex-shrink-0">
             {new Date().toLocaleDateString("en-PH", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </div>
         </div>
-        <div className="p-6 max-h-[640px] overflow-y-auto">
-          {page === "dashboard" && (
+        <div className="p-4 sm:p-6 lg:max-h-[calc(100vh-41px)] lg:overflow-y-auto">
+          {activePage === "dashboard" && (
             <DashboardPage
               households={households}
               alerts={alerts}
-              totalCollected={totalCollected}
               unpaidCount={unpaidCount}
               setPage={setPage}
             />
           )}
-          {page === "consumption" && <ConsumptionPage households={households} />}
-          {page === "billing" && (
+          {activePage === "consumption" && <ConsumptionPage households={households} />}
+          {activePage === "billing" && (
             <BillingPage
               households={households}
               markPaid={markPaid}
@@ -231,11 +299,11 @@ export function AdminView(props) {
               showToast={showToast}
               billsGenerated={billsGenerated}
               unpaidCount={unpaidCount}
-              totalCollected={totalCollected}
               onGenerateBills={onGenerateBills}
+              canGenerateBills={isOfficer}
             />
           )}
-          {page === "alerts" && (
+          {activePage === "alerts" && (
             <AlertsPage
               alerts={alerts}
               filter={alertFilter}
@@ -246,7 +314,7 @@ export function AdminView(props) {
               unresolveAlert={unresolveAlert}
             />
           )}
-          {page === "households" && (
+          {activePage === "households" && (
             <HouseholdsPage
               households={households}
               showToast={showToast}
@@ -254,9 +322,11 @@ export function AdminView(props) {
               onAddHousehold={onAddHousehold}
             />
           )}
-          {page === "records" && <RecordsPage households={households} showToast={showToast} />}
-          {page === "statements" && <BillStatementsPage households={households} />}
-          {page === "settings" && <SettingsPage showToast={showToast} />}
+          {activePage === "records" && <RecordsPage households={households} showToast={showToast} />}
+          {activePage === "statements" && <BillStatementsPage households={households} />}
+          {activePage === "announcements" && <AnnouncementsPage showToast={showToast} />}
+          {activePage === "audit" && <AuditLogPage showToast={showToast} />}
+          {activePage === "settings" && <SettingsPage showToast={showToast} />}
         </div>
       </div>
     </div>
@@ -316,36 +386,36 @@ function AdminLoginScreen({ onAdminLogin }) {
   }
 
   return (
-    <div className="min-h-[680px] flex items-center justify-center bg-slate-100">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4 py-8 sm:px-6 sm:py-12">
+      <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg">
         {/* Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition duration-300 hover:shadow-xl hover:border-slate-300 motion-safe:hover:-translate-y-1">
           {/* Header band */}
-          <div className="bg-[#1e3a5f] px-8 py-6 text-center">
+          <div className="bg-[#1e3a5f] px-6 py-7 sm:px-8 sm:py-9 text-center">
             <img
               src={logoImage}
               alt="Barangay Kinamlutan logo"
-              className="mx-auto mb-3 h-16 w-16 rounded-full object-cover shadow-lg border-2 border-white/20"
+              className="mx-auto mb-3 h-16 w-16 sm:h-20 sm:w-20 rounded-full object-cover shadow-lg border-2 border-white/20"
             />
-            <div className="font-extrabold text-white text-[15px] leading-tight">
+            <div className="font-extrabold text-white text-base sm:text-lg leading-tight">
               Barangay Kinamlutan
             </div>
-            <div className="font-semibold text-sky-300 text-[12px] mt-0.5">
+            <div className="font-semibold text-sky-300 text-xs sm:text-sm mt-0.5">
               Water Billing & Monitoring System
             </div>
           </div>
 
           {/* Form */}
-          <div className="px-8 py-6">
-            <div className="text-[13px] font-semibold text-slate-700 mb-1 text-center">
+          <div className="px-6 py-6 sm:px-8 sm:py-8">
+            <div className="text-sm sm:text-base font-semibold text-slate-700 mb-1 text-center">
               Admin Sign In
             </div>
-            <div className="text-[11px] text-slate-400 mb-5 text-center">
+            <div className="text-xs sm:text-sm text-slate-400 mb-5 text-center">
               Enter your admin credentials to access the water system dashboard.
             </div>
 
             {info && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 mb-4 text-[11px] text-emerald-700">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 mb-4 text-xs sm:text-[13px] text-emerald-700">
                 {info}
               </div>
             )}
@@ -355,14 +425,14 @@ function AdminLoginScreen({ onAdminLogin }) {
                 <svg className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                <span className="text-[11px] text-rose-700">{error}</span>
+                <span className="text-xs sm:text-[13px] text-rose-700">{error}</span>
               </div>
             )}
 
             <form onSubmit={handleSubmit}>
               {/* Email */}
               <div className="mb-3">
-                <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                   Email
                 </label>
                 <div className="relative">
@@ -375,7 +445,7 @@ function AdminLoginScreen({ onAdminLogin }) {
                     type="email"
                     value={email}
                     onChange={(e) => { setEmail(e.target.value); setError(""); }}
-                    className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                    className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
                     placeholder="admin@barangay.local"
                     autoComplete="username"
                   />
@@ -384,7 +454,7 @@ function AdminLoginScreen({ onAdminLogin }) {
 
               {/* Password */}
               <div className="mb-1">
-                <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                   Password
                 </label>
                 <div className="relative">
@@ -397,7 +467,7 @@ function AdminLoginScreen({ onAdminLogin }) {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                    className="w-full border border-slate-300 rounded-lg pl-9 pr-10 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                    className="w-full border border-slate-300 rounded-lg pl-9 pr-10 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
                     placeholder="Enter your password"
                     autoComplete="current-password"
                   />
@@ -423,7 +493,7 @@ function AdminLoginScreen({ onAdminLogin }) {
                 <button
                   type="button"
                   onClick={() => { setError(""); setInfo(""); setMode("forgot"); }}
-                  className="text-[11px] text-sky-600 hover:text-sky-800 font-medium"
+                  className="text-xs sm:text-[13px] text-sky-600 hover:text-sky-800 font-medium"
                 >
                   Forgot password?
                 </button>
@@ -433,7 +503,7 @@ function AdminLoginScreen({ onAdminLogin }) {
               <button
                 type="submit"
                 disabled={submitting}
-                className={`w-full text-white text-[13px] font-semibold py-2.5 rounded-lg transition active:scale-[0.98] ${
+                className={`w-full text-white text-sm sm:text-base font-semibold py-2.5 sm:py-3 rounded-lg transition active:scale-[0.98] ${
                   submitting ? "bg-slate-400 cursor-not-allowed" : "bg-[#1e3a5f] hover:bg-[#16304f]"
                 }`}
               >
@@ -444,10 +514,10 @@ function AdminLoginScreen({ onAdminLogin }) {
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-4 text-[11px] text-slate-400">
+        <div className="text-center mt-4 text-xs sm:text-[13px] text-slate-400">
           Barangay Kinamlutan, Butuan City · ZIP 8600
         </div>
-        <div className="text-center mt-2 text-[11px] text-slate-500">
+        <div className="text-center mt-2 text-xs sm:text-[13px] text-slate-500">
           Resident?{" "}
           <a href="/resident" className="text-sky-600 hover:text-sky-800 font-medium">
             Go to the resident portal
@@ -531,38 +601,38 @@ function ForgotPasswordScreen({ initialEmail, onDone, onCancel }) {
   }
 
   return (
-    <div className="min-h-[680px] flex items-center justify-center bg-slate-100">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4 py-8 sm:px-6 sm:py-12">
+      <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg">
         {/* Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition duration-300 hover:shadow-xl hover:border-slate-300 motion-safe:hover:-translate-y-1">
           {/* Header band */}
-          <div className="bg-[#1e3a5f] px-8 py-6 text-center">
+          <div className="bg-[#1e3a5f] px-6 py-7 sm:px-8 sm:py-9 text-center">
             <img
               src={logoImage}
               alt="Barangay Kinamlutan logo"
-              className="mx-auto mb-3 h-16 w-16 rounded-full object-cover shadow-lg border-2 border-white/20"
+              className="mx-auto mb-3 h-16 w-16 sm:h-20 sm:w-20 rounded-full object-cover shadow-lg border-2 border-white/20"
             />
-            <div className="font-extrabold text-white text-[15px] leading-tight">
+            <div className="font-extrabold text-white text-base sm:text-lg leading-tight">
               Barangay Kinamlutan
             </div>
-            <div className="font-semibold text-sky-300 text-[12px] mt-0.5">
+            <div className="font-semibold text-sky-300 text-xs sm:text-sm mt-0.5">
               Water Billing & Monitoring System
             </div>
           </div>
 
           {/* Form */}
-          <div className="px-8 py-6">
-            <div className="text-[13px] font-semibold text-slate-700 mb-1 text-center">
+          <div className="px-6 py-6 sm:px-8 sm:py-8">
+            <div className="text-sm sm:text-base font-semibold text-slate-700 mb-1 text-center">
               Reset Password
             </div>
-            <div className="text-[11px] text-slate-400 mb-5 text-center">
+            <div className="text-xs sm:text-sm text-slate-400 mb-5 text-center">
               {resetCode
                 ? "Enter the reset code and choose a new password."
                 : "Enter your admin email to get a reset code."}
             </div>
 
             {error && (
-              <div className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2.5 mb-4 text-[11px] text-rose-700">
+              <div className="bg-rose-50 border border-rose-200 rounded-lg px-3 py-2.5 mb-4 text-xs sm:text-[13px] text-rose-700">
                 {error}
               </div>
             )}
@@ -570,7 +640,7 @@ function ForgotPasswordScreen({ initialEmail, onDone, onCancel }) {
             {!resetCode ? (
               <form onSubmit={handleRequestCode}>
                 <div className="mb-5">
-                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                  <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                     Email
                   </label>
                   <div className="relative">
@@ -583,7 +653,7 @@ function ForgotPasswordScreen({ initialEmail, onDone, onCancel }) {
                       type="email"
                       value={email}
                       onChange={(e) => { setEmail(e.target.value); setError(""); }}
-                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
                       placeholder="admin@barangay.local"
                       autoComplete="username"
                     />
@@ -592,7 +662,7 @@ function ForgotPasswordScreen({ initialEmail, onDone, onCancel }) {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className={`w-full text-white text-[13px] font-semibold py-2.5 rounded-lg transition active:scale-[0.98] ${
+                  className={`w-full text-white text-sm sm:text-base font-semibold py-2.5 sm:py-3 rounded-lg transition active:scale-[0.98] ${
                     submitting ? "bg-slate-400 cursor-not-allowed" : "bg-[#1e3a5f] hover:bg-[#16304f]"
                   }`}
                 >
@@ -601,59 +671,59 @@ function ForgotPasswordScreen({ initialEmail, onDone, onCancel }) {
               </form>
             ) : (
               <>
-                <div className="bg-sky-50 border border-sky-200 rounded-lg px-3 py-2.5 mb-4 text-[11px] text-sky-800">
+                <div className="bg-sky-50 border border-sky-200 rounded-lg px-3 py-2.5 mb-4 text-xs sm:text-[13px] text-sky-800">
                   <div className="font-semibold mb-1">
                     No email service is configured, so here's your reset code:
                   </div>
                   <div className="text-2xl font-mono font-bold tracking-widest text-center py-1 text-slate-800">
                     {resetCode}
                   </div>
-                  <div className="text-[11px] text-sky-600 text-center">
+                  <div className="text-xs sm:text-[13px] text-sky-600 text-center">
                     Valid for {expiresInMinutes} minutes.
                   </div>
                 </div>
 
                 <form onSubmit={handleResetPassword}>
                   <div className="mb-3">
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                    <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                       Reset Code
                     </label>
                     <input
                       type="text"
                       value={codeInput}
                       onChange={(e) => { setCodeInput(e.target.value); setError(""); }}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-[13px] font-mono tracking-widest focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 sm:py-3 text-base font-mono tracking-widest focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition"
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                    <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                       New Password
                     </label>
                     <input
                       type="password"
                       value={newPassword}
                       onChange={(e) => { setNewPassword(e.target.value); setError(""); }}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition placeholder-slate-300"
                       placeholder="At least 8 characters"
                       autoComplete="new-password"
                     />
                   </div>
                   <div className="mb-5">
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                    <label className="text-xs sm:text-[13px] font-semibold text-slate-600 block mb-1.5">
                       Confirm New Password
                     </label>
                     <input
                       type="password"
                       value={confirmPassword}
                       onChange={(e) => { setConfirmPassword(e.target.value); setError(""); }}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-[13px] focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 sm:py-3 text-base focus:outline-none focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f] transition"
                       autoComplete="new-password"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className={`w-full text-white text-[13px] font-semibold py-2.5 rounded-lg transition active:scale-[0.98] ${
+                    className={`w-full text-white text-sm sm:text-base font-semibold py-2.5 sm:py-3 rounded-lg transition active:scale-[0.98] ${
                       submitting ? "bg-slate-400 cursor-not-allowed" : "bg-[#1e3a5f] hover:bg-[#16304f]"
                     }`}
                   >
@@ -667,7 +737,7 @@ function ForgotPasswordScreen({ initialEmail, onDone, onCancel }) {
               <button
                 type="button"
                 onClick={onCancel}
-                className="text-[11px] text-slate-500 hover:text-slate-700 font-medium"
+                className="text-xs sm:text-[13px] text-slate-500 hover:text-slate-700 font-medium"
               >
                 ← Back to sign in
               </button>
@@ -676,7 +746,7 @@ function ForgotPasswordScreen({ initialEmail, onDone, onCancel }) {
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-4 text-[11px] text-slate-400">
+        <div className="text-center mt-4 text-xs sm:text-[13px] text-slate-400">
           Barangay Kinamlutan, Butuan City · ZIP 8600
         </div>
       </div>
