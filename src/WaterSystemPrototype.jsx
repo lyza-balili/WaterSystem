@@ -52,6 +52,7 @@ export default function WaterSystemPrototype() {
   const [adminAuthenticated, setAdminAuthenticated] = useState(!!adminSession);
   const [residentAuthenticated, setResidentAuthenticated] = useState(!!residentSession);
   const [adminEmail, setAdminEmail] = useState(adminSession?.email || "");
+  const [adminRole, setAdminRole] = useState(adminSession?.staffRole || "officer");
   const [residentLoginHouseholdId, setResidentLoginHouseholdId] = useState(null);
 
   // shared state — populated either from API or from mock data
@@ -231,6 +232,7 @@ export default function WaterSystemPrototype() {
       try {
         const user = await adminLogin(email, password);
         setAdminEmail(user.email || email);
+        setAdminRole(user.role || "officer");
         setAdminAuthenticated(true);
         setAdminPage("dashboard");
         return { success: true };
@@ -572,15 +574,12 @@ export default function WaterSystemPrototype() {
     }, 1500);
   }
 
-  const totalCollected = households
-    .filter((h) => h.paymentStatus === "Paid")
-    .reduce((s, h) => s + h.totalDue, 0);
   const unpaidCount = households.filter((h) => h.paymentStatus === "Unpaid" || h.paymentStatus === "GCash Pending").length;
   const billsGenerated = households.length;
 
   if (loading) {
     return (
-      <div className="w-full min-h-[700px] bg-slate-50 flex items-center justify-center text-slate-500 text-sm">
+      <div className="w-full min-h-screen bg-slate-50 flex items-center justify-center text-slate-500 text-sm">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-[3px] border-sky-600 border-t-transparent rounded-full animate-spin" />
           Connecting to backend…
@@ -590,7 +589,7 @@ export default function WaterSystemPrototype() {
   }
 
   return (
-    <div className="w-full min-h-[700px] bg-slate-50 text-slate-800" style={{ fontFamily: "'Source Sans 3', system-ui, sans-serif" }}>
+    <div className="w-full min-h-screen bg-slate-50 text-slate-800" style={{ fontFamily: "'Source Sans 3', system-ui, sans-serif" }}>
       <style>{`
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
@@ -600,7 +599,6 @@ export default function WaterSystemPrototype() {
         <AdminView
           households={households}
           alerts={alerts}
-          totalCollected={totalCollected}
           unpaidCount={unpaidCount}
           billsGenerated={billsGenerated}
           page={adminPage}
@@ -609,6 +607,7 @@ export default function WaterSystemPrototype() {
           onAdminLogin={handleAdminLogin}
           onAdminLogout={handleAdminLogout}
           adminEmail={adminEmail}
+          adminRole={adminRole}
           markPaid={markPaid}
           markUnpaid={markUnpaid}
           receiveGcashPayment={receiveGcashPayment}

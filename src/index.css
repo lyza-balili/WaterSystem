@@ -16,6 +16,16 @@ body {
   box-sizing: border-box;
 }
 
+@layer components {
+  /* Shared hover response for content cards and panels. Applied broadly across
+     the admin/resident views, so this is the single knob for how every card
+     reacts to the cursor. Utilities beat this layer, so a card that sets its
+     own hover:* colours (e.g. the dashboard quick actions) still wins. */
+  .card-hover {
+    @apply transition duration-200 hover:border-slate-300 hover:shadow-md;
+  }
+}
+
 /* Circular checkbox with a white checkmark when checked. */
 .check-circle {
   -webkit-appearance: none;

@@ -44,6 +44,26 @@ export function billingDateForPeriod(period = "May 2026") {
   return `${year}-${String(monthIndex + 1).padStart(2, "0")}-25`;
 }
 
+// How many whole days a bill is past its due date. Returns 0 for paid bills,
+// missing due dates, or bills not yet due. Dates are compared at local midnight
+// so a bill due "today" is not counted as overdue.
+export function daysOverdue(dueDate, paymentStatus) {
+  if (paymentStatus === "Paid" || !dueDate) return 0;
+  const [y, m, d] = String(dueDate).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return 0;
+  const due = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.floor((today - due) / 86400000);
+  return diff > 0 ? diff : 0;
+}
+
+// A household's current bill is overdue when it isn't paid and its due date has
+// passed. (Display-only — no penalties are applied.)
+export function isOverdue(household) {
+  return household ? daysOverdue(household.dueDate, household.paymentStatus) > 0 : false;
+}
+
 export function peso(n) {
   return "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
